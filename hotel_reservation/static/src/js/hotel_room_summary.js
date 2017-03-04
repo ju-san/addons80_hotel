@@ -18,6 +18,7 @@
             this.set({
                 date_to: false,
                 date_from: false,
+                company_id: false,
                 summary_header: false,
                 room_summary: false,
             });
@@ -29,7 +30,9 @@
             this.field_manager.on("field_changed:date_to", this, function() {
                 this.set({"date_to": openerp.web.str_to_datetime(this.field_manager.get_field_value("date_to"))});
             });
-            
+            this.field_manager.on("field_changed:company_id", this, function() {
+                this.set({"company_id": this.field_manager.get_field_value("company_id")});
+            });
             this.field_manager.on("field_changed:summary_header", this, function() {
                 this.set({"summary_header": this.field_manager.get_field_value("summary_header")});
             });

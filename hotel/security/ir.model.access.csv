@@ -11,6 +11,8 @@ access_hotel_folio_line,hotel_folio.line.user,model_hotel_folio_line,hotel.group
 access_hotel_service_line,hotel_service.line.user,model_hotel_service_line,hotel.group_hotel_user,1,1,1,0
 acess_hotel_service_type,hotel.service_type.user,model_hotel_service_type,hotel.group_hotel_user,1,1,1,0
 access_hotel_services,hotel.sevices.user,model_hotel_services,hotel.group_hotel_user,1,1,1,0
+access_hotel_package_type_user,hotel.package_user.manager,model_hotel_package_type,hotel.group_hotel_user,1,1,1,0
+access_hotel_package,hotel.package.user,model_hotel_package,hotel.group_hotel_user,1,1,1,0
 access_hotel_order_user,hotel.order.user,sale.model_sale_order,hotel.group_hotel_user,1,1,1,0
 access_hotel_order_line_user,hotel.order.line.user,sale.model_sale_order_line,hotel.group_hotel_user,1,1,1,0
 access_hotel_invoice_user,account.invoice.user,account.model_account_invoice,hotel.group_hotel_user,1,1,1,0
@@ -26,6 +28,8 @@ access_hotel_folio_line_manager,hotel_folio.line.manager,model_hotel_folio_line,
 access_hotel_service_line_manager,hotel_service.line.manager,model_hotel_service_line,hotel.group_hotel_manager,1,1,1,1
 acess_hotel_service_type_manager,hotel.service_type.manager,model_hotel_service_type,hotel.group_hotel_manager,1,1,1,1
 access_hotel_services_manager,hotel.sevices.manager,model_hotel_services,hotel.group_hotel_manager,1,1,1,1
+access_hotel_package_type_manager,hotel.package_type.manager,model_hotel_package_type,hotel.group_hotel_manager,1,1,1,1
+access_hotel_package_manager,hotel.package.manager,model_hotel_package,hotel.group_hotel_manager,1,1,1,1
 access_hotel_order_manager_manager,hotel.order.manager,sale.model_sale_order,hotel.group_hotel_manager,1,1,1,1
 access_hotel_order_line_manager,hotel.order.line.manager,sale.model_sale_order_line,hotel.group_hotel_manager,1,1,1,0
 access_hotel_invoice_manager,account.invoice.manager,account.model_account_invoice,hotel.group_hotel_manager,1,1,1,1

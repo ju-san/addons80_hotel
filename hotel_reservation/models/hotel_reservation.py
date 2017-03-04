@@ -25,21 +25,34 @@ from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from openerp.exceptions import except_orm, ValidationError
 from dateutil.relativedelta import relativedelta
 from openerp import models, fields, api, _
+import openerp.addons.decimal_precision as dp
 import datetime
 import time
 
 
-class HotelFolio(models.Model):
+class ResPartner(models.Model):
+    _inherit = 'res.partner'
 
+    partner_discount = fields.Float(string='Returning Discount')
+    partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
+                             'Type', default=lambda *a: 'regular')
+    
+    @api.onchange('partner_discount')
+    def _onchange_partner_discount(self):
+        if not self.partner_discount:
+            return
+        if self.partner_discount > 100.0:
+            raise except_orm(_('Error'), _('Discount Max is 100%.'))
+    
+    
+class HotelFolio(models.Model):
     _inherit = 'hotel.folio'
     _order = 'reservation_id desc'
 
-    reservation_id = fields.Many2one(comodel_name='hotel.reservation',
-                                     string='Reservation Id')
+    reservation_id = fields.Many2one(comodel_name='hotel.reservation', string='Reservation')
 
 
 class HotelFolioLineExt(models.Model):
-
     _inherit = 'hotel.folio.line'
 
     @api.multi
@@ -80,19 +93,90 @@ class HotelFolioLineExt(models.Model):
 
 
 class HotelReservation(models.Model):
-
     _name = "hotel.reservation"
     _rec_name = "reservation_no"
     _description = "Reservation"
     _order = 'reservation_no desc'
     _inherit = ['mail.thread', 'ir.needaction_mixin']
-
+    
+#     date_a = (datetime.datetime(*time.strptime(reservation['checkout'],DEFAULT_SERVER_DATETIME_FORMAT)[:5]))
+#     date_b = (datetime.datetime(*time.strptime(reservation['checkin'],DEFAULT_SERVER_DATETIME_FORMAT)[:5]))
+    
+    @api.one
+    @api.depends('checkin', 'checkout')
+    def _compute_duration(self):
+        '''
+        This mathod gives the duration between check in and checkout
+        if customer will leave only for some hour it would be considers
+        as a whole day.If customer will check in checkout for more or equal
+        hours, which configured in company as additional hours than it would
+        be consider as full days
+        --------------------------------------------------------------------
+        @param self: object pointer
+        @return: Duration and checkout_date
+        '''
+        company_obj = self.env['res.company']
+        configured_addition_hours = 0
+        company_ids = company_obj.search([])
+        if company_ids.ids:
+            configured_addition_hours = company_ids[0].additional_hours
+        myduration = 0
+        chckin = self.checkin#_date
+        chckout = self.checkout#_date
+        if chckin and chckout:
+            server_dt = DEFAULT_SERVER_DATETIME_FORMAT
+            chkin_dt = datetime.datetime.strptime(chckin, server_dt)
+            chkout_dt = datetime.datetime.strptime(chckout, server_dt)
+            dur = chkout_dt - chkin_dt
+            sec_dur = dur.seconds
+            if (not dur.days and not sec_dur) or (dur.days and not sec_dur):
+                myduration = dur.days
+            else:
+                myduration = dur.days + 1
+            if configured_addition_hours > 0:
+                additional_hours = abs((dur.seconds / 60) / 60)
+                if additional_hours >= configured_addition_hours:
+                    myduration += 1
+        self.duration = myduration
+        
+    @api.one
+    @api.depends('reservation_package_line.price_subtotal', 'reservation_room_line.price_subtotal', 'reservation_service_line.price_subtotal')
+    def _amount_all(self):
+        """
+        Compute the total amounts of the SO.
+        """
+        voucher_obj = self.env['account.voucher'] 
+        for order in self:
+            amount_untaxed = amount_deposit = amount_tax = 0.0
+            for pline in order.reservation_package_line:
+                amount_untaxed += pline.price_subtotal
+                amount_tax += pline.price_tax
+            for rline in order.reservation_room_line:
+                amount_untaxed += rline.price_subtotal
+                amount_tax += rline.price_tax
+            for sline in order.reservation_service_line:
+                amount_untaxed += sline.price_subtotal
+                amount_tax += sline.price_tax
+            for deposit in voucher_obj.search([('partner_id','=',order.partner_id.id)]):
+                if deposit.state == 'draft':
+                    amount_deposit += deposit.amount
+            order.update({
+                'amount_deposit': amount_deposit,
+                'amount_untaxed': order.pricelist_id.currency_id.round(amount_untaxed),
+                'amount_tax': order.pricelist_id.currency_id.round(amount_tax),
+                'amount_total': amount_untaxed + amount_tax,
+            })
+    
     reservation_no = fields.Char('Reservation No', size=64, readonly=True)
     date_order = fields.Datetime('Date Ordered', required=True, readonly=True,
                                  states={'draft': [('readonly', False)]},
-                                 default=(lambda *a:
-                                          time.strftime
-                                          (DEFAULT_SERVER_DATETIME_FORMAT)))
+                                 default=(lambda *a: time.strftime(DEFAULT_SERVER_DATETIME_FORMAT)))
+    date_expire = fields.Datetime('Auto Cancel Reservation', required=True, readonly=True, states={'draft': [('readonly', False)]})
+    partner_discount = fields.Float(string='Discount Customer', readonly=True, states={'draft': [('readonly', False)]})
+    partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
+                             'Customer Type', default=lambda *a: 'regular', readonly=True, states={'draft': [('readonly', False)]})
+    reserve_type = fields.Selection([('room', 'Room'), ('service', 'Service'), ('package', 'Package')],
+                             'Reservation Type', default=lambda *a: 'room', required=True, readonly=True, states={'draft': [('readonly', False)]})
     warehouse_id = fields.Many2one('stock.warehouse', 'Hotel', readonly=True,
                                    required=True, default=1,
                                    states={'draft': [('readonly', False)]})
@@ -104,9 +188,7 @@ class HotelReservation(models.Model):
                                    states={'draft': [('readonly', False)]},
                                    help="Pricelist for current reservation.")
     partner_invoice_id = fields.Many2one('res.partner', 'Invoice Address',
-                                         readonly=True,
-                                         states={'draft':
-                                                 [('readonly', False)]},
+                                         readonly=True, states={'draft': [('readonly', False)]},
                                          help="Invoice address for "
                                          "current reservation.")
     partner_order_id = fields.Many2one('res.partner', 'Ordering Contact',
@@ -122,29 +204,121 @@ class HotelReservation(models.Model):
                                                   [('readonly', False)]},
                                           help="Delivery address"
                                           "for current reservation. ")
-    checkin = fields.Datetime('Expected-Date-Arrival', required=True,
-                              readonly=True,
-                              states={'draft': [('readonly', False)]})
-    checkout = fields.Datetime('Expected-Date-Departure', required=True,
-                               readonly=True,
-                               states={'draft': [('readonly', False)]})
+    checkin = fields.Datetime('Expected-Date-Arrival', required=True, readonly=True, states={'draft': [('readonly', False)]})
+    checkout = fields.Datetime('Expected-Date-Departure', required=True, readonly=True, states={'draft': [('readonly', False)]})
+    duration = fields.Float('Duration in Days', digits=dp.get_precision('Product UoS'), compute='_compute_duration',
+                            help="Number of days which will automatically "
+                            "count from the check-in and check-out date. ")
     adults = fields.Integer('Adults', size=64, readonly=True,
                             states={'draft': [('readonly', False)]},
                             help='List of adults there in guest list. ')
     children = fields.Integer('Children', size=64, readonly=True,
                               states={'draft': [('readonly', False)]},
                               help='Number of children there in guest list.')
-    reservation_line = fields.One2many('hotel_reservation.line', 'line_id',
-                                       'Reservation Line',
-                                       help='Hotel room reservation details.')
+    room_to_reserve = fields.Many2many('hotel.room',
+                               'hotel_room_to_reserve_rel',
+                               'hotel_reservation_id', 'room_id',
+                               domain="[('isroom','=',True)]", string="Room to Reserve", readonly=True, states={'draft': [('readonly', False)]})
+    service_to_reserve = fields.Many2many('hotel.services',
+                               'hotel_services_to_reserve_rel',
+                               'hotel_reservation_id', 'service_id',
+                               domain="[('isservice','=',True)]", string="Service to Reserve", readonly=True, states={'draft': [('readonly', False)]})
+    #reservation_line2 = fields.One2many('hotel_reservation.line2', 'line_id', 'Service Reserve', help='Hotel service reservation details.')
+    reservation_line = fields.One2many('hotel_reservation.line', 'line_id', 'Room Reserve', help='Hotel room reservation details.')
+    reservation_package_line = fields.One2many('hotel_reservation.package.line', 'line_id', 'Package Reservation',readonly=True, states={'draft': [('readonly', False)]}, help='Hotel package reservation details.')
+    reservation_room_line = fields.One2many('hotel_reservation.room.line', 'line_id', 'Rooms',readonly=True, states={'draft': [('readonly', False)]}, help='Hotel room reservation details.')
+    reservation_service_line = fields.One2many('hotel_reservation.service.line', 'line_id', 'Services',readonly=True, states={'draft': [('readonly', False)]}, help='Hotel service reservation details.')
     state = fields.Selection([('draft', 'Draft'), ('confirm', 'Confirm'),
                               ('cancel', 'Cancel'), ('done', 'Done')],
                              'State', readonly=True,
                              default=lambda *a: 'draft')
     folio_id = fields.Many2many('hotel.folio', 'hotel_folio_reservation_rel',
                                 'order_id', 'invoice_id', string='Folio')
-    dummy = fields.Datetime('Dummy')
+    company_id = fields.Many2one('res.company', string='Company', required=True,
+                                 default=lambda self: self.env.user.company_id, readonly=True, states={'draft': [('readonly', False)]})
+    dummy = fields.Datetime('Dummy')    
+    hide_me = fields.Boolean('Hide')
+    tax_id = fields.Many2many('account.tax', string='Taxes', domain=['|', ('active', '=', False), ('active', '=', True)])
+    #amount_discount = fields.Float(string='Discount', store=True, readonly=True, compute='_amount_all', track_visibility='always')
+    amount_deposit = fields.Float(string='Deposit', store=True, readonly=True, compute='_amount_all', track_visibility='always')
+    amount_untaxed = fields.Float(string='Untaxed Amount', store=True, readonly=True, compute='_amount_all', track_visibility='always')
+    amount_tax = fields.Float(string='Taxes', store=True, readonly=True, compute='_amount_all', track_visibility='always')
+    amount_total = fields.Float(string='Total', store=True, readonly=True, compute='_amount_all', track_visibility='always')
+    
+    note = fields.Text()
+    
+#     @api.model
+#     def _amount_line_tax(self, line):
+#         taxes = line.tax_id.filtered(lambda t: t.company_id.id == line.line_id.company_id.id)
+#         price = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
+#         taxes = taxes.compute_all(price, line.line_id.pricelist_id.currency_id, line.quantity, product=line.package_id.package_id, partner=line.line_id.partner_id or False)['taxes']
+#         return sum(tax.get('amount', 0.0) for tax in taxes)
+    
+    @api.onchange('partner_discount')
+    def _onchange_partner_discount(self):
+        if not self.partner_discount:
+            return
+        self.partner_discount = self.partner_id.partner_discount
+    
+    @api.onchange('reservation_package_line')
+    def _onchange_reservation_package_line(self):
+        if not self.reservation_package_line:
+            return
+        room_lines = []
+        service_lines = []
+        if self.reservation_package_line.reserve_room:
+            room_lines = [self.reservation_package_line.reserve_room.id]
+        if self.reservation_package_line.reserve_ser:
+            service_lines = [self.reservation_package_line.reserve_ser.id]
+        self.room_to_reserve = room_lines
+        self.service_to_reserve = service_lines
+        return
+    
+    @api.onchange('reservation_room_line')
+    def _onchange_reservation_room_line(self):
+        if not self.reservation_room_line:
+            return
+        room_lines = []
+        for room in self.reservation_room_line:
+            room_lines.append(room.room_id.id)
+        self.room_to_reserve = room_lines
+        return
 
+    @api.onchange('reservation_service_line')
+    def _onchange_reservation_service_line(self):
+        if not self.reservation_service_line:
+            return
+        service_lines = []
+        for service in self.reservation_service_line:
+            service_lines.append(service.service_id.id)
+        self.service_to_reserve = service_lines
+        return
+
+    @api.multi
+    def button_dummy(self):
+        room_lines = []
+        service_lines = []        
+        #CUT LINK
+        for room in self.room_to_reserve:
+            self.write({'room_to_reserve': [(3, room.id)]})
+        for serv in self.service_to_reserve:
+            self.write({'service_to_reserve': [(3, serv.id)]})
+        #PACKAGE
+        if self.reservation_package_line.reserve_room:
+            room_lines = [self.reservation_package_line.reserve_room.id]
+        if self.reservation_package_line.reserve_ser:
+            service_lines = [self.reservation_package_line.reserve_ser.id]
+        #ROOM
+        for rroom in self.reservation_room_line:
+            room_lines.append(rroom.room_id.id)
+        #SERVICE
+        for svrs in self.reservation_service_line:
+            service_lines.append(svrs.service_id.id)
+        self._onchange_reservation_package_line()
+        self._onchange_reservation_room_line()
+        self._onchange_reservation_service_line()
+        return True
+    
     @api.multi
     def unlink(self):
         """
@@ -167,20 +341,16 @@ class HotelReservation(models.Model):
         @return: raise a warning depending on the validation
         '''
         for reservation in self:
-            if len(reservation.reservation_line) == 0:
-                raise ValidationError(_('Please Select Rooms \
-                For Reservation.'))
-            for rec in reservation.reservation_line:
-                if len(rec.reserve) == 0:
-                    raise ValidationError(_('Please Select Rooms \
-                    For Reservation.'))
-                cap = 0
-                for room in rec.reserve:
-                    cap += room.capacity
-                if (self.adults + self.children) > cap:
-                        raise ValidationError(_('Room Capacity \
-                        Exceeded \n Please Select Rooms According to \
-                        Members Accomodation.'))
+            if not reservation.room_to_reserve:
+                raise ValidationError(_('Please Select Rooms For Reservation.'))
+#             for rec in reservation.room_to_reserve:
+#                 if len(rec.reserve) == 0:
+#                     raise ValidationError(_('Please Select Rooms For Reservation.'))
+#                 cap = 0
+#                 for room in rec.reserve:
+#                     cap += room.capacity
+                #if (self.adults + self.children) > cap:
+                #        raise ValidationError(_('Room Capacity Exceeded \nPlease Select Rooms According to Members Accomodation.'))
 
     @api.constrains('checkin', 'checkout')
     def check_in_out_dates(self):
@@ -189,6 +359,7 @@ class HotelReservation(models.Model):
         Checkout date should be greater than the checkin date.
         """
         if self.checkout and self.checkin:
+            #print "=====",self.checkin<self.date_order
             if self.checkin < self.date_order:
                 raise except_orm(_('Warning'), _('Checkin date should be \
                 greater than the current date.'))
@@ -233,13 +404,16 @@ class HotelReservation(models.Model):
             self.partner_invoice_id = False
             self.partner_shipping_id = False
             self.partner_order_id = False
+            self.partner_type = ''
+            self.partner_discount = 0
         else:
-            addr = self.partner_id.address_get(['delivery', 'invoice',
-                                                'contact'])
+            addr = self.partner_id.address_get(['delivery', 'invoice', 'contact'])
             self.partner_invoice_id = addr['invoice']
             self.partner_order_id = addr['contact']
             self.partner_shipping_id = addr['delivery']
             self.pricelist_id = self.partner_id.property_product_pricelist.id
+            self.partner_type = self.partner_id.partner_type
+            self.partner_discount = self.partner_id.partner_discount
 
     @api.multi
     def confirmed_reservation(self):
@@ -277,19 +451,17 @@ class HotelReservation(models.Model):
                 reservation with room those already reserved in this \
                 reservation period'))
             else:
+                for room_id in reservation.room_to_reserve:
+                    vals = {
+                        'room_id': room_id.id,
+                        'check_in': reservation.checkin,
+                        'check_out': reservation.checkout,
+                        'state': 'assigned',
+                        'reservation_id': reservation.id,
+                        }
+                    room_id.write({'isroom': False, 'status': 'occupied'})
+                    reservation_line_obj.create(vals)
                 self.write({'state': 'confirm'})
-                for line_id in reservation.reservation_line:
-                    line_id = line_id.reserve
-                    for room_id in line_id:
-                        vals = {
-                            'room_id': room_id.id,
-                            'check_in': reservation.checkin,
-                            'check_out': reservation.checkout,
-                            'state': 'assigned',
-                            'reservation_id': reservation.id,
-                            }
-                        room_id.write({'isroom': False, 'status': 'occupied'})
-                        reservation_line_obj.create(vals)
         return True
 
     @api.multi
@@ -301,24 +473,21 @@ class HotelReservation(models.Model):
         @return: cancel record set for hotel room reservation line.
         """
         room_res_line_obj = self.env['hotel.room.reservation.line']
-        hotel_res_line_obj = self.env['hotel_reservation.line']
-        self.write({'state': 'cancel'})
-        room_reservation_line = room_res_line_obj.search([('reservation_id',
-                                                           'in', self.ids)])
-        room_reservation_line.write({'state': 'unassigned'})
-        reservation_lines = hotel_res_line_obj.search([('line_id',
-                                                        'in', self.ids)])
-        for reservation_line in reservation_lines:
-            reservation_line.reserve.write({'isroom': True,
-                                            'status': 'available'})
-        return True
+        #hotel_res_line_obj = self.env['hotel_reservation.line']        
+        room_reservation_line = room_res_line_obj.search([('reservation_id','in', self.ids)])
+        room_reservation_line.unlink()
+        #room_reservation_line.write({'state': 'unassigned'})
+#         reservation_lines = hotel_res_line_obj.search([('line_id','in', self.ids)])
+#         for reservation_line in reservation_lines:
+#             reservation_line.reserve.write({'isroom': True, 'status': 'available'})
+        return self.write({'state': 'cancel'})
 
     @api.multi
     def set_to_draft_reservation(self):
         self.write({'state':'draft'})
         # Deleting the existing instance of workflow for PO
         self.delete_workflow()
-        self.create_workflow()            
+        self.create_workflow()   
         return True
 
     @api.multi
@@ -404,6 +573,7 @@ class HotelReservation(models.Model):
         room_obj = self.env['hotel.room']
         for reservation in self:
             folio_lines = []
+            service_lines = []
             checkin_date = reservation['checkin']
             checkout_date = reservation['checkout']
             if not self.checkin < self.checkout:
@@ -425,45 +595,90 @@ class HotelReservation(models.Model):
                 'checkout_date': reservation.checkout,
                 'duration': duration,
                 'reservation_id': reservation.id,
+                'partner_type': reservation.partner_type,
+                'partner_discount': reservation.partner_discount,
                 'service_lines': reservation['folio_id']
             }
-            date_a = (datetime.datetime
-                      (*time.strptime(reservation['checkout'],
-                                      DEFAULT_SERVER_DATETIME_FORMAT)[:5]))
-            date_b = (datetime.datetime
-                      (*time.strptime(reservation['checkin'],
-                                      DEFAULT_SERVER_DATETIME_FORMAT)[:5]))
-            for line in reservation.reservation_line:
-                for r in line.reserve:
-                    prod = r.product_id.id
-                    partner = reservation.partner_id.id
-                    price_list = reservation.pricelist_id.id
-                    folio_line_obj = self.env['hotel.folio.line']
-                    prod_val = folio_line_obj.product_id_change(
-                        pricelist=price_list, product=prod,
-                        qty=0, uom=False, qty_uos=0, uos=False,
-                        name='', partner_id=partner, lang=False,
-                        update_tax=True, date_order=False
-                    )
-                    prod_uom = prod_val['value'].get('product_uom', False)
-                    price_unit = prod_val['value'].get('price_unit', False)
+            date_a = (datetime.datetime(*time.strptime(reservation['checkout'],DEFAULT_SERVER_DATETIME_FORMAT)[:5]))
+            date_b = (datetime.datetime(*time.strptime(reservation['checkin'],DEFAULT_SERVER_DATETIME_FORMAT)[:5]))
+            #FOR ROOM & SERVICE IN PACKAGE
+            for pline in reservation.reservation_package_line:
+                if pline.reserve_room:
+                    #print "==reserve_room==",[x.id for x in pline.tax_id]
+                    rprod_uom = pline.reserve_room.product_id and pline.reserve_room.product_id.uom_id.id
+                    price_unit_room = pline.price_room                
                     folio_lines.append((0, 0, {
+                        'name': 'PCKG:'+reservation['reservation_no'],
                         'checkin_date': checkin_date,
                         'checkout_date': checkout_date,
-                        'product_id': r.product_id and r.product_id.id,
-                        'name': reservation['reservation_no'],
-                        'product_uom': prod_uom,
-                        'price_unit': price_unit,
-                        'product_uom_qty': ((date_a - date_b).days) + 1,
+                        'product_id': pline.reserve_room.product_id and pline.reserve_room.product_id.id,
+                        'product_uom_qty': pline.quantity,#((date_a - date_b).days) + 1,
+                        'product_uom': rprod_uom,
+                        'price_unit': price_unit_room,
+                        'discount': pline.discount,
+                        'partner_discount': reservation.partner_discount,
+                        'tax_id': [(6, 0, [x.id for x in pline.tax_id])],
+                        'type': pline.type,
                         'is_reserved': True}))
-                    res_obj = room_obj.browse([r.id])
-                    res_obj.write({'status': 'occupied', 'isroom': False})
-            folio_vals.update({'room_lines': folio_lines})
+                if pline.reserve_ser:
+                    sprod_uom = pline.reserve_ser.service_id and pline.reserve_ser.service_id.uom_id.id
+                    price_unit_service = pline.price_service
+                    service_lines.append((0, 0, {
+                        'name': 'PCKG:'+reservation['reservation_no'],
+                        'checkin_date': checkin_date,
+                        'checkout_date': checkout_date,
+                        'product_id': pline.reserve_ser.service_id and pline.reserve_ser.service_id.id,
+                        'product_uom_qty': pline.quantity,#((date_a - date_b).days) + 1,
+                        'product_uom': sprod_uom,
+                        'price_unit': price_unit_service,
+                        'discount': pline.discount,
+                        'partner_discount': reservation.partner_discount,
+                        'tax_id': [(6, 0, [x.id for x in pline.tax_id])],
+                        'type': pline.type,
+                        'is_reserved': True}))
+                res_obj = room_obj.browse([pline.reserve_room.id])
+                res_obj.write({'status': 'occupied', 'isroom': False})
+            #FOR ROOM ONLY
+            for rline in reservation.reservation_room_line:
+                rprod_uom = rline.room_id.product_id and rline.room_id.product_id.uom_id.id
+                rprice_unit = rline.price_unit
+                folio_lines.append((0, 0, {
+                    'name': 'ROOM:'+reservation['reservation_no'],
+                    'checkin_date': checkin_date,
+                    'checkout_date': checkout_date,
+                    'product_id': rline.room_id.product_id and rline.room_id.product_id.id,
+                    'product_uom_qty': rline.quantity,#((date_a - date_b).days) + 1,
+                    'product_uom': rprod_uom,
+                    'price_unit': rprice_unit,
+                    'discount': rline.discount,
+                    'partner_discount': reservation.partner_discount,
+                    'tax_id': [(6, 0, [x.id for x in rline.tax_id])],
+                    'type': rline.type,
+                    'is_reserved': True}))
+                res_obj = room_obj.browse([rline.room_id.id])
+                res_obj.write({'status': 'occupied', 'isroom': False})
+            #FOR SERVICE ONLY
+            for sline in reservation.reservation_service_line:
+                sprod_uom = sline.service_id.service_id and sline.service_id.service_id.uom_id.id
+                sprice_unit = sline.price_unit
+                service_lines.append((0, 0, {
+                    'name': 'SVR:'+reservation['reservation_no'],
+                    'checkin_date': checkin_date,
+                    'checkout_date': checkout_date,
+                    'product_id': sline.service_id.service_id and sline.service_id.service_id.id,
+                    'product_uom_qty': sline.quantity,#((date_a - date_b).days) + 1,
+                    'product_uom': sprod_uom,
+                    'price_unit': sprice_unit,
+                    'discount': sline.discount,
+                    'partner_discount': reservation.partner_discount,
+                    'tax_id': [(6, 0, [x.id for x in sline.tax_id])],
+                    'type': sline.type,
+                    'is_reserved': True}))
+                #res_obj = room_obj.browse([line.room_id.id])
+                #res_obj.write({'status': 'occupied', 'isroom': False})
+            folio_vals.update({'room_lines': folio_lines, 'service_lines': service_lines})
             folio = hotel_folio_obj.create(folio_vals)
-            self._cr.execute('insert into hotel_folio_reservation_rel'
-                             '(order_id, invoice_id) values (%s,%s)',
-                             (reservation.id, folio.id)
-                             )
+            self._cr.execute('insert into hotel_folio_reservation_rel (order_id, invoice_id) values (%s,%s)',(reservation.id, folio.id))
             reservation.write({'state': 'done'})
         return True
 
@@ -516,23 +731,27 @@ class HotelReservation(models.Model):
                                           ].get('hotel.reservation')
         return super(HotelReservation, self).create(vals)
 
-
 class HotelReservationLine(models.Model):
-
     _name = "hotel_reservation.line"
     _description = "Reservation Line"
 
-    name = fields.Char('Name', size=64)
+    name = fields.Char(related='reserve.name', string='Name', size=64)
     line_id = fields.Many2one('hotel.reservation')
     reserve = fields.Many2many('hotel.room',
                                'hotel_reservation_line_room_rel',
                                'hotel_reservation_line_id', 'room_id',
-                               domain="[('isroom','=',True),\
-                               ('categ_id','=',categ_id)]")
+                               domain="[('isroom','=',True)]")
     categ_id = fields.Many2one('product.category', 'Room Type',
                                domain="[('isroomtype','=',True)]",
                                change_default=True)
-
+    company_id = fields.Many2one('res.company', string='Company', default=lambda self: self.env.user.company_id)
+    
+#     @api.onchange('line_id.reservation_package_line', 'line_id.reservation_package_line.package_id', 'line_id.reservation_package_line.reserve_room')
+#     def onchange_room_id(self):
+#         #if self.line_id.reservation_package_line:
+#         self.reserve = self.line_id.package_id.room_id
+#         print "==onchange_room_id==",self.line_id.package_id.room_id
+            
     @api.onchange('categ_id')
     def on_change_categ(self):
         '''
@@ -542,8 +761,7 @@ class HotelReservationLine(models.Model):
         @param self: object pointer
         '''
         hotel_room_obj = self.env['hotel.room']
-        hotel_room_ids = hotel_room_obj.search([('categ_id', '=',
-                                                 self.categ_id.id)])
+        hotel_room_ids = hotel_room_obj.search([('categ_id', '=', self.categ_id.id)])
         room_ids = []
         if not self.line_id.checkin:
             raise except_orm(_('Warning'),
@@ -589,31 +807,213 @@ class HotelReservationLine(models.Model):
                     myobj.unlink()
         return super(HotelReservationLine, self).unlink()
 
+# class HotelReservationLine2(models.Model):
+#     _name = "hotel_reservation.line2"
+#     _description = "Reservation Line2"
+# 
+#     name = fields.Char(related='reserve.name', string='Name', size=64)
+#     line_id = fields.Many2one('hotel.reservation')
+#     reserve = fields.Many2many('hotel.services',
+#                                'hotel_reservation_line_room_rel2',
+#                                'hotel_reservation_line_id2', 'service_id',
+#                                domain="[('isservice','=',True),\
+#                                ('categ_id','=',categ_id)]")
+#     categ_id = fields.Many2one('product.category', 'Service Type',
+#                                domain="[('isservicetype','=',True)]",
+#                                change_default=True)
+#     company_id = fields.Many2one('res.company', string='Company', default=lambda self: self.env.user.company_id)
 
+class HotelReservationPackageLine(models.Model):
+    _name = "hotel_reservation.package.line"
+    _description = "Reservation Package Line"
+            
+    @api.depends('line_id.duration', 'line_id.checkin', 'line_id.checkout', 
+                'package_id', 'price_unit', 'discount', 'partner_discount', 'quantity', 'tax_id',
+                'line_id.pricelist_id', 'line_id.pricelist_id.currency_id', 'line_id.company_id')
+    def _compute_price(self):
+        for line in self:
+            price = line.price_unit
+            if line.type == 'child':
+                price = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
+            price = price * (1 - (line.partner_discount or 0.0) / 100.0)
+            taxes = line.tax_id.compute_all(price, line.quantity*line.line_id.duration, product=line.package_id.package_id, partner=line.line_id.partner_id)
+            price_tax = 0.0
+            if taxes['taxes']:
+                price_tax = taxes['taxes'][0]['amount']
+            line.update({
+                'price_subtotal': line.line_id.pricelist_id.currency_id.round(taxes['total']),
+                'price_tax': line.line_id.pricelist_id.currency_id.round(price_tax),
+            })
+        
+    name = fields.Char('Name', size=64)
+    line_id = fields.Many2one('hotel.reservation')
+    package_id = fields.Many2one('hotel.package', 'Package')
+    #product_id = fields.Many2one('product.product', related='package_id.package_id', string='Product')
+    price_unit = fields.Float('Price/Rate')
+    price_room = fields.Float('Price Room', related='package_id.list_price', readonly=True)
+    price_service = fields.Float('Price Service', related='package_id.list_price2', readonly=True)
+    quantity = fields.Float('Pax', digits=dp.get_precision('Product UoS'), default=1.0)
+    discount = fields.Float('Disc (%)', digits= dp.get_precision('Discount'))
+    partner_discount = fields.Float('Disc Cust. (%)', related='line_id.partner_discount', digits= dp.get_precision('Discount'))
+    tax_id = fields.Many2many('account.tax', string='Taxes', domain=['|', ('active', '=', False), ('active', '=', True)])
+    
+    price_subtotal = fields.Float(compute='_compute_price', string='Subtotal', readonly=True, store=True)
+    price_discount = fields.Float(compute='_compute_price', string='Disc', readonly=True, store=True)
+    price_tax = fields.Float(compute='_compute_price', string='Taxes', readonly=True, store=True)
+    
+    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')
+    categ_id = fields.Many2one('product.category', string='Room Type', related='package_id.categ_id2', readonly=True, store=True)
+    #package_room_line = fields.One2many('package.room.line', 'package_id', string='Room')
+    #package_service_line = fields.One2many('package.service.line', 'package_id', string='Room')
+    reserve_room = fields.Many2one('hotel.room', string='Room', domain="[('isroom','=',True),('categ_id','=',categ_id)]")
+#     reserve_room = fields.Many2many('hotel.room',
+#                                'hotel_reservation_package_line_room_rel',
+#                                'hotel_reservation_package_line_id', 'room_id',
+#                                domain="[('isroom','=',True),('categ_id','=',categ_id)]")
+    categ_id2 = fields.Many2one('product.category', string='Service Type', related='package_id.categ_id3', readonly=True, store=True)
+    reserve_ser = fields.Many2one('hotel.services', string='Service', domain="[('isservice','=',True),('categ_id','=',categ_id2)]")
+#     reserve_ser = fields.Many2many('hotel.services',
+#                                'hotel_reservation_services_line_rel',
+#                                'hotel_reservation_service_line_id', 'ser_id',
+#                                domain="[('isservice','=',True),('categ_id','=',categ_id2)]")
+    company_id = fields.Many2one('res.company', string='Company', default=lambda self: self.env.user.company_id)
+    
+    @api.onchange('package_id')
+    def onchange_package_id(self):
+        if self.package_id:
+            self.price_unit = self.package_id.package_price
+            #self.price_room = self.package_id.list_price
+            #self.price_service = self.package_id.list_price2
+            #self.reserve_room = self.package_id.room_id
+            #self.reserve_ser = self.package_id.service_id
+#             print "======",self.line_id.reservation_line.reserve,self.reserve_room,self.package_id.room_id
+#             self.line_id.reservation_line.reserve = self.package_id.room_id
+    
+#     
+# class PackageRoomLine(models.Model):
+#     _name = "package.room.line"
+#     _description = "Package Room Line"
+#     
+#     package_id = fields.Many2one('hotel_reservation.package.line', string='Package')
+#     room_id = fields.Many2one('hotel.room', 'Room', domain="[('isroom','=',True),('categ_id','=',package_id.categ_id)]")
+#     price_normal = fields.Float(string='Normal Price')
+#     price_package = fields.Float(string='Package Price')
+#     
+# class PackageServiceLine(models.Model):
+#     _name = "package.service.line"
+#     _description = "Package Service Line"
+#     
+#     package_id = fields.Many2one('hotel_reservation.package.line', string='Package')
+#     service_id = fields.Many2one('hotel.services', 'Service', domain="[('isservice','=',True),('categ_id','=',package_id.categ_id2)]")
+#     price_normal = fields.Float(string='Normal Price')
+#     price_package = fields.Float(string='Package Price')
+    
+class HotelReservationRoomLine(models.Model):
+    _name = "hotel_reservation.room.line"
+    _description = "Reservation Room Line"
+
+    @api.depends('line_id.duration', 'price_unit', 'discount', 'partner_discount', 'quantity', 'tax_id',
+        'line_id.pricelist_id', 'line_id.pricelist_id.currency_id', 'line_id.company_id')
+    def _compute_room_price(self):
+        for line in self:
+            price = line.price_unit
+            if line.type == 'child':
+                price = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
+            price = price * (1 - (line.partner_discount or 0.0) / 100.0)
+            taxes = line.tax_id.compute_all(price, line.quantity*line.line_id.duration, product=line.room_id.product_id, partner=line.line_id.partner_id)
+            price_tax = 0.0
+            if taxes['taxes']:
+                price_tax = taxes['taxes'][0]['amount']
+            line.update({
+                'price_subtotal': line.line_id.pricelist_id.currency_id.round(taxes['total']),
+                'price_tax': line.line_id.pricelist_id.currency_id.round(price_tax),
+            })
+            
+    name = fields.Char('Service', size=64)
+    line_id = fields.Many2one('hotel.reservation')
+    categ_id = fields.Many2one('product.category', 'Room Type', domain="[('isroomtype','=',True)]", change_default=True)
+    room_id = fields.Many2one('hotel.room', 'Room', domain="[('isroom','=',True),('categ_id','=',categ_id)]")
+    price_unit = fields.Float('Price/Rate')
+    quantity = fields.Float('Pax', digits=dp.get_precision('Product UoS'), default=1.0)
+    discount = fields.Float('Disc (%)', digits= dp.get_precision('Discount'))
+    partner_discount = fields.Float('Disc Cust. (%)', related='line_id.partner_discount', digits= dp.get_precision('Discount'))
+    tax_id = fields.Many2many('account.tax', string='Taxes', domain=['|', ('active', '=', False), ('active', '=', True)])
+    
+    price_subtotal = fields.Float(compute='_compute_room_price', string='Subtotal', readonly=True, store=True)
+    price_tax = fields.Float(compute='_compute_room_price', string='Taxes', readonly=True, store=True)
+    #price_total = fields.Float(compute='_compute_room_price', string='Total', readonly=True, store=True)
+
+    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')
+    company_id = fields.Many2one('res.company', string='Company', default=lambda self: self.env.user.company_id)
+    
+    @api.onchange('room_id')
+    def onchange_room_id(self):
+        if self.room_id:
+            self.price_unit = self.room_id.list_price
+            
+class HotelReservationServiceLine(models.Model):
+    _name = "hotel_reservation.service.line"
+    _description = "Reservation Service Line"
+
+    @api.depends('line_id.duration', 'price_unit', 'discount', 'partner_discount', 'quantity',
+        'line_id.pricelist_id', 'line_id.pricelist_id.currency_id', 'line_id.company_id')
+    def _compute_service_price(self):
+        for line in self:
+            price = line.price_unit
+            if line.type == 'child':
+                price = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
+            price = price * (1 - (line.partner_discount or 0.0) / 100.0)
+            taxes = line.tax_id.compute_all(price, line.quantity*line.line_id.duration, product=line.service_id.service_id, partner=line.line_id.partner_id)
+            price_tax = 0.0
+            if taxes['taxes']:
+                price_tax = taxes['taxes'][0]['amount']
+            line.update({
+                'price_subtotal': line.line_id.pricelist_id.currency_id.round(taxes['total']),
+                'price_tax': line.line_id.pricelist_id.currency_id.round(price_tax),
+            })
+
+        
+    name = fields.Char('Service', size=64)
+    line_id = fields.Many2one('hotel.reservation')
+    categ_id = fields.Many2one('product.category', 'Service Type', domain="[('isservicetype','=',True)]", change_default=True)
+    service_id = fields.Many2one('hotel.services', 'Service', domain="[('isservice','=',True),('categ_id','=',categ_id)]")
+    price_unit = fields.Float('Price/Rate')
+    quantity = fields.Float('Pax', digits=dp.get_precision('Product UoS'), default=1.0)
+    discount = fields.Float('Disc (%)', digits= dp.get_precision('Discount'))
+    partner_discount = fields.Float('Disc Cust. (%)', related='line_id.partner_discount', digits= dp.get_precision('Discount'))
+    tax_id = fields.Many2many('account.tax', string='Taxes', domain=['|', ('active', '=', False), ('active', '=', True)])
+    
+    price_subtotal = fields.Float(compute='_compute_service_price', string='Subtotal', readonly=True, store=True)
+    price_tax = fields.Float(compute='_compute_service_price', string='Taxes', readonly=True, store=True)
+    #price_total = fields.Float(compute='_compute_service_price', string='Total', readonly=True, store=True)
+    
+    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')
+    company_id = fields.Many2one('res.company', string='Company', default=lambda self: self.env.user.company_id)
+    
+    @api.onchange('service_id')
+    def onchange_service_id(self):
+        if self.service_id:
+            self.price_unit = self.service_id.list_price
+            
 class HotelRoomReservationLine(models.Model):
-
     _name = 'hotel.room.reservation.line'
     _description = 'Hotel Room Reservation'
     _rec_name = 'room_id'
-
-    room_id = fields.Many2one(comodel_name='hotel.room', string='Room id')
+    
+    room_id = fields.Many2one(comodel_name='hotel.room', string='Room')
     check_in = fields.Datetime('Check In Date', required=True)
     check_out = fields.Datetime('Check Out Date', required=True)
     state = fields.Selection([('assigned', 'Assigned'),
                               ('unassigned', 'Unassigned')], 'Room Status')
-    reservation_id = fields.Many2one('hotel.reservation',
-                                     string='Reservation')
+    reservation_id = fields.Many2one('hotel.reservation', string='Reservation')
     status = fields.Selection(string='state', related='reservation_id.state')
 
 
 class HotelRoom(models.Model):
-
     _inherit = 'hotel.room'
     _description = 'Hotel Room'
 
-    room_reservation_line_ids = fields.One2many('hotel.room.reservation.line',
-                                                'room_id',
-                                                string='Room Reserv Line')
+    room_reservation_line_ids = fields.One2many('hotel.room.reservation.line', 'room_id', string='Room Reserv Line')
 
     @api.model
     def cron_room_line(self):
@@ -663,6 +1063,7 @@ class RoomReservationSummary(models.Model):
 
     date_from = fields.Datetime('Date From')
     date_to = fields.Datetime('Date To')
+    company_id = fields.Many2one('res.company', string='Location', required=True, default=lambda self: self.env.user.company_id)
     summary_header = fields.Text('Summary Header')
     room_summary = fields.Text('Room Summary')
 
@@ -720,7 +1121,7 @@ class RoomReservationSummary(models.Model):
                 'target': 'new',
                 }
 
-    @api.onchange('date_from', 'date_to')
+    @api.onchange('date_from', 'date_to', 'company_id')
     def get_room_summary(self):
         '''
         @param self: object pointer
@@ -749,11 +1150,11 @@ class RoomReservationSummary(models.Model):
                        str(temp_date.strftime("%b")) + ' ' +
                        str(temp_date.strftime("%d")))
                 summary_header_list.append(val)
-                date_range_list.append(temp_date.strftime
-                                       (DEFAULT_SERVER_DATETIME_FORMAT))
+                date_range_list.append(temp_date.strftime(DEFAULT_SERVER_DATETIME_FORMAT))
                 temp_date = temp_date + datetime.timedelta(days=1)
             all_detail.append(summary_header_list)
-            room_ids = room_obj.search([])
+            room_ids = room_obj.search([('company_id','=',self.company_id.id)])
+            #print "====room_ids===",room_ids,self.env.user.company_id.id
             all_room_detail = []
             for room in room_ids:
                 room_detail = {}
@@ -771,7 +1172,7 @@ class RoomReservationSummary(models.Model):
                                           ([('id', 'in', reserline_ids),
                                             ('check_in', '<=', chk_date),
                                             ('check_out', '>=', chk_date),
-                                            ('status', '!=', 'cancel')
+                                            ('status', 'not in', ('draft','cancel'))
                                             ]))
                         fol_room_line_ids = room.room_line_ids.ids
                         chk_state = ['draft', 'cancel']
@@ -782,7 +1183,7 @@ class RoomReservationSummary(models.Model):
                                              ('status', 'not in', chk_state)
                                              ]))
                         if reservline_ids or folio_resrv_ids:
-                            room_list_stats.append({'state': 'Reserved',
+                            room_list_stats.append({'state': reservline_ids and reservline_ids[0].reservation_id.partner_id.name or 'Reserved',
                                                     'date': chk_date,
                                                     'room_id': room.id,
                                                     'is_draft': 'No',

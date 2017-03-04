@@ -12,4 +12,36 @@
         <field name="name">Hotel Management / User</field>
     </record>
 </data>
+<data noupdate="1">
+	<record id="hotel_room_comp_rule" model="ir.rule">
+        <field name="name">Hotel Room multi-company</field>
+        <field name="model_id" ref="model_hotel_room"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|',('company_id','=',False),('company_id','child_of',[user.company_id.id])]</field>
+    </record>
+    <record id="hotel_room_type_comp_rule" model="ir.rule">
+        <field name="name">Hotel Room Type multi-company</field>
+        <field name="model_id" ref="model_hotel_room_type"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|',('company_id','=',False),('company_id','child_of',[user.company_id.id])]</field>
+    </record>
+    <record id="hotel_services_comp_rule" model="ir.rule">
+        <field name="name">Hotel Service multi-company</field>
+        <field name="model_id" ref="model_hotel_services"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|',('company_id','=',False),('company_id','child_of',[user.company_id.id])]</field>
+    </record>
+    <record id="hotel_service_type_comp_rule" model="ir.rule">
+        <field name="name">Hotel Service Type multi-company</field>
+        <field name="model_id" ref="model_hotel_service_type"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|',('company_id','=',False),('company_id','child_of',[user.company_id.id])]</field>
+    </record>
+    <record id="hotel_package_comp_rule" model="ir.rule">
+        <field name="name">Hotel Package multi-company</field>
+        <field name="model_id" ref="model_hotel_package"/>
+        <field name="global" eval="True"/>
+        <field name="domain_force">['|',('company_id','=',False),('company_id','child_of',[user.company_id.id])]</field>
+    </record>
+</data>
 </openerp>

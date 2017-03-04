@@ -23,6 +23,7 @@
 from openerp.exceptions import except_orm, ValidationError
 from openerp.exceptions import Warning as UserError
 from openerp.tools import misc, DEFAULT_SERVER_DATETIME_FORMAT
+import openerp.addons.decimal_precision as dp
 from openerp import models, fields, api, _
 from openerp import workflow
 from decimal import Decimal
@@ -91,30 +92,29 @@ class HotelFloor(models.Model):
 
 
 class ProductCategory(models.Model):
-
     _inherit = "product.category"
 
     isroomtype = fields.Boolean('Is Room Type')
     isamenitytype = fields.Boolean('Is Amenities Type')
     isservicetype = fields.Boolean('Is Service Type')
+    ispackagetype = fields.Boolean('Is Package Type')
 
 
 class HotelRoomType(models.Model):
-
     _name = "hotel.room.type"
     _description = "Room Type"
 
-    cat_id = fields.Many2one('product.category', 'category', required=True,
-                             delegate=True, select=True, ondelete='cascade')
+    cat_id = fields.Many2one('product.category', 'category', required=True, delegate=True, select=True, ondelete='cascade')
+    company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.user.company_id)
 
 
 class ProductProduct(models.Model):
-
     _inherit = "product.product"
 
     isroom = fields.Boolean('Is Room')
-    iscategid = fields.Boolean('Is categ id')
-    isservice = fields.Boolean('Is Service id')
+    iscategid = fields.Boolean('Is Categ')
+    isservice = fields.Boolean('Is Service')
+    ispackage = fields.Boolean('Is Package')
 
 
 class HotelRoomAmenitiesType(models.Model):
@@ -124,6 +124,8 @@ class HotelRoomAmenitiesType(models.Model):
 
     cat_id = fields.Many2one('product.category', 'category', required=True,
                              delegate=True, ondelete='cascade')
+    company_id = fields.Many2one('res.company', string='Company', required=True,
+                                 default=lambda self: self.env.user.company_id)
 
 
 class HotelRoomAmenities(models.Model):
@@ -163,6 +165,7 @@ class HotelRoom(models.Model):
                                help='At which floor the room is located.')
     max_adult = fields.Integer('Max Adult')
     max_child = fields.Integer('Max Child')
+    pax_price = fields.Float('Price Per Pax')
     room_amenities = fields.Many2many('hotel.room.amenities', 'temp_tab',
                                       'room_amenities', 'rcateg_id',
                                       string='Room Amenities',
@@ -173,7 +176,18 @@ class HotelRoom(models.Model):
     capacity = fields.Integer('Capacity')
     room_line_ids = fields.One2many('folio.room.line', 'room_id',
                                     string='Room Reservation Line')
-
+    company_id = fields.Many2one('res.company', string='Company', required=True,
+                                 default=lambda self: self.env.user.company_id)
+    
+    def name_get(self, cr, uid, ids, context=None):
+        if not ids:
+            return []
+        res = []
+        for record in self.read(cr, uid, ids, ['description','name'], context=context):
+            name = record['description'] and record['description'] or record['name']
+            res.append((record['id'],name ))
+        return res
+    
     @api.model
     def create(self, vals):
         uom_obj = self.env['product.uom']
@@ -231,7 +245,6 @@ class HotelRoom(models.Model):
 
 
 class HotelFolio(models.Model):
-
     @api.multi
     def name_get(self):
         res = []
@@ -322,16 +335,57 @@ class HotelFolio(models.Model):
     _rec_name = 'order_id'
     _order = 'id'
     _inherit = ['ir.needaction_mixin']
+    
+    @api.depends('room_lines')
+    def _compute_pax_description(self):
+        for folio in self:
+            adult_qty = child_qty = 0
+            adult_desc = child_desc = space = ''
+            for room in folio.room_lines:
+                if room.type == 'adult':
+                    adult_qty += room.product_uom_qty
+                if room.type == 'child':
+                    child_qty += room.product_uom_qty
+            if adult_qty:
+                adult_desc = str(int(adult_qty)) + ' Adult(s)'
+            if child_qty:
+                child_desc = str(int(child_qty)) + ' Child(s)'
+            if adult_qty and child_qty:
+                space = ', '
+            folio.update({
+                'pax_description': adult_desc + space + child_desc,
+            })
 
+    @api.depends('partner_id')
+    def _amount_deposit(self):
+        """
+        Compute the total amounts of the SO.
+        """
+        voucher_obj = self.env['account.voucher'] 
+        for order in self:
+            amount_deposit = 0.0
+            for deposit in voucher_obj.search([('partner_id','=',order.partner_id.id)]):
+                if deposit.state == 'draft':
+                    amount_deposit += deposit.amount
+            order.update({
+                'amount_deposit': amount_deposit,
+            })
+            
     name = fields.Char('Folio Number', readonly=True)
     order_id = fields.Many2one('sale.order', 'Order', delegate=True,
                                required=True, ondelete='cascade')
-    checkin_date = fields.Datetime('Check In', required=True, readonly=True,
-                                   states={'draft': [('readonly', False)]},
-                                   default=_get_checkin_date)
-    checkout_date = fields.Datetime('Check Out', required=True, readonly=True,
-                                    states={'draft': [('readonly', False)]},
-                                    default=_get_checkout_date)
+    amount_deposit = fields.Float(string='Deposit', store=True, readonly=True, compute='_amount_deposit', track_visibility='always')
+#     partner_discount = fields.Float(string='Returning Discount')
+#     partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
+#                              'Type', default=lambda *a: 'regular')
+#     checkin_date = fields.Datetime('Check In', required=True, readonly=True, states={'draft': [('readonly', False)]},
+#                                    default=_get_checkin_date)
+#     checkout_date = fields.Datetime('Check Out', required=True, readonly=True, states={'draft': [('readonly', False)]},
+#                                     default=_get_checkout_date)    
+#     duration = fields.Float('Duration in Days', related='order_id.duration',
+#                             store=True,
+#                             help="Number of days which will automatically "
+#                             "count from the check-in and check-out date. ")
     room_lines = fields.One2many('hotel.folio.line', 'folio_id',
                                  readonly=True,
                                  states={'draft': [('readonly', False)],
@@ -352,13 +406,12 @@ class HotelFolio(models.Model):
                                     "either the guest has to payment at "
                                     "booking time or check-in "
                                     "check-out time.")
-    duration = fields.Float('Duration in Days',
-                            help="Number of days which will automatically "
-                            "count from the check-in and check-out date. ")
-    currrency_ids = fields.One2many('currency.exchange', 'folio_no',
-                                    readonly=True)
+    currrency_ids = fields.One2many('currency.exchange', 'folio_no', readonly=True)
     hotel_invoice_id = fields.Many2one('account.invoice', 'Invoice')
-
+    pax_description = fields.Char('Pax', compute='_compute_pax_description')
+    #type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')
+    
+    
     @api.multi
     def go_to_currency_exchange(self):
         '''
@@ -399,8 +452,8 @@ class HotelFolio(models.Model):
         '''
         folio_rooms = []
         for room in self[0].room_lines:
-            if room.product_id.id in folio_rooms:
-                raise ValidationError(_('You Cannot Take Same Room Twice'))
+#             if room.product_id.id in folio_rooms:
+#                 raise ValidationError(_('You Cannot Take Same Room Twice'))
             folio_rooms.append(room.product_id.id)
 
     @api.constrains('checkin_date', 'checkout_date')
@@ -734,7 +787,6 @@ class HotelFolioLine(models.Model):
 #        @param default: dict of default values to be set
 #        '''
 #        return self.env['sale.order.line'].copy(default=default)
-
     @api.multi
     def _amount_line(self, field_name, arg):
         '''
@@ -789,21 +841,36 @@ class HotelFolioLine(models.Model):
                                           '%Y-%m-%d %H:%M:%S') + tm_delta
 
     _name = 'hotel.folio.line'
-    _description = 'hotel folio1 room line'
-
+    _description = 'hotel folio room line'
+            
+#     @api.depends('line_id.duration', 'line_id.checkin', 'line_id.checkout', 
+#                 'package_id', 'price_unit', 'discount', 'partner_discount', 'quantity', 'tax_id',
+#                 'line_id.pricelist_id', 'line_id.pricelist_id.currency_id', 'line_id.company_id')
+#     def _compute_price(self):
+#         for line in self:
+#             price = line.price_unit
+#             if line.type == 'child':
+#                 price = line.price_unit * (1 - (line.discount or 0.0) / 100.0)
+#             price = price * (1 - (line.partner_discount or 0.0) / 100.0)
+#             taxes = line.tax_id.compute_all(price, line.quantity*line.line_id.duration, product=line.package_id.package_id, partner=line.line_id.partner_id)
+#             price_tax = 0.0
+#             if taxes['taxes']:
+#                 price_tax = taxes['taxes'][0]['amount']
+#             line.update({
+#                 'price_subtotal': line.line_id.pricelist_id.currency_id.round(taxes['total']),
+#                 'price_tax': line.line_id.pricelist_id.currency_id.round(price_tax),
+#             })
+#             
     order_line_id = fields.Many2one('sale.order.line', string='Order Line',
                                     required=True, delegate=True,
                                     ondelete='cascade')
-    folio_id = fields.Many2one('hotel.folio', string='Folio',
-                               ondelete='cascade')
-    checkin_date = fields.Datetime('Check In', required=True,
-                                   default=_get_checkin_date)
-    checkout_date = fields.Datetime('Check Out', required=True,
-                                    default=_get_checkout_date)
+    folio_id = fields.Many2one('hotel.folio', string='Folio', ondelete='cascade')
+    checkin_date = fields.Datetime('Check In', required=True, default=_get_checkin_date)
+    checkout_date = fields.Datetime('Check Out', required=True,  default=_get_checkout_date)
     is_reserved = fields.Boolean('Is Reserved',
                                  help='True when folio line created from \
                                  Reservation')
-
+    
     @api.model
     def create(self, vals, check=True):
         """
@@ -886,8 +953,7 @@ class HotelFolioLine(models.Model):
                 sale_unlink_obj = (sale_line_obj.browse
                                    ([line.order_line_id.id]))
                 for rec in sale_unlink_obj:
-                    room_obj = self.env['hotel.room'
-                                        ].search([('name', '=', rec.name)])
+                    room_obj = self.env['hotel.room'].search([('name', '=', rec.name)])
                     if room_obj.id:
                         folio_arg = [('folio_id', '=', line.folio_id.id),
                                      ('room_id', '=', room_obj.id),
@@ -1083,7 +1149,8 @@ class HotelServiceLine(models.Model):
                                        default=_service_checkin_date)
     ser_checkout_date = fields.Datetime('To Date', required=True,
                                         default=_service_checkout_date)
-
+    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')
+    
     @api.model
     def create(self, vals, check=True):
         """
@@ -1201,32 +1268,67 @@ class HotelServiceLine(models.Model):
 
 
 class HotelServiceType(models.Model):
-
     _name = "hotel.service.type"
     _description = "Service Type"
 
-    ser_id = fields.Many2one('product.category', 'category', required=True,
-                             delegate=True, select=True, ondelete='cascade')
+    ser_id = fields.Many2one('product.category', 'category', required=True, delegate=True, select=True, ondelete='cascade')
+    company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.user.company_id)
 
 
 class HotelServices(models.Model):
-
     _name = 'hotel.services'
     _description = 'Hotel Services and its charges'
 
-    service_id = fields.Many2one('product.product', 'Service_id',
-                                 required=True, ondelete='cascade',
-                                 delegate=True)
+    service_id = fields.Many2one('product.product', 'Service', required=True, ondelete='cascade', delegate=True)
+    company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.user.company_id)
 
+
+class HotelPackageType(models.Model):
+    _name = "hotel.package.type"
+    _description = "Package Type"
+ 
+    pac_id = fields.Many2one('product.category', 'Category', required=True, delegate=True, select=True, ondelete='cascade')
+    company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.user.company_id)
+
+
+class HotelPackage(models.Model):
+    _name = 'hotel.package'
+    _description = 'Package Room and Service'
+    
+    @api.depends('list_price', 'list_price2')
+    def _compute_package(self):
+        for line in self:
+            line.update({
+                'package_price': line.list_price + line.list_price2,
+            })
+            
+    package_id = fields.Many2one('product.product', 'Package', required=True, ondelete='cascade', delegate=True)
+    categ_id2 = fields.Many2one('product.category', 'Room Type', domain="[('isroomtype','=',True)]", required=True, select=True, ondelete='cascade')
+    room_id = fields.Many2many('hotel.room', 'reserve_room_package_rel', 'package_id', 'room_id', domain="[('isroom','=',True),('categ_id','=',categ_id2),('company_id','=',company_id)]", string='Room', help='List of room for package')
+    categ_id3 = fields.Many2one('product.category', 'Service Type', domain="[('isservicetype','=',True)]", required=True, select=True, ondelete='cascade')
+    service_id = fields.Many2many('hotel.services', 'reserve_service_package_rel', 'package_id', 'service_id', domain="[('isservice','=',True),('categ_id','=',categ_id3),('company_id','=',company_id)]", string='Service', help='List of service for package')
+    list_price2 = fields.Float('Service Price', digits=dp.get_precision('Product Price'), help="Base service price to compute the customer price. Sometimes called the catalog price.")
+    uom_id2 = fields.Many2one('product.uom', string='Unit of Measure', required=True)
+    company_id = fields.Many2one('res.company', string='Company', required=True, default=lambda self: self.env.user.company_id)
+    package_price = fields.Float('Package Price', compute='_compute_package', readonly=True)
+    
+#     @api.onchange('room_id')
+#     def onchange_room_id(self):
+#         if self.room_id:
+#             self.list_price = self.room_id.list_price
+#             
+#     @api.onchange('service_id')
+#     def onchange_ser_id(self):
+#         if self.room_id:
+#             self.list_price2 = self.ser_id.list_price
 
 class ResCompany(models.Model):
-
     _inherit = 'res.company'
 
     additional_hours = fields.Integer('Additional Hours',
                                       help="Provide the min hours value for \
-check in, checkout days, whatever the hours will be provided here based \
-on that extra days will be calculated.")
+                                    check in, checkout days, whatever the hours will be provided here based \
+                                    on that extra days will be calculated.")
 
 
 class CurrencyExchangeRate(models.Model):
@@ -1371,11 +1473,150 @@ class CurrencyExchangeRate(models.Model):
                 ser_tax = ((self.out_amount) * (float(self.tax))) / 100
                 self.total = self.out_amount - ser_tax
 
+class SaleOrder(models.Model):
+    _inherit = 'sale.order'
+    
+    @api.model
+    def _get_checkin_date(self):
+        if self._context.get('tz'):
+            to_zone = self._context.get('tz')
+        else:
+            to_zone = 'UTC'
+        return _offset_format_timestamp1(time.strftime("%Y-%m-%d 12:00:00"),
+                                         '%Y-%m-%d %H:%M:%S',
+                                         '%Y-%m-%d %H:%M:%S',
+                                         ignore_unparsable_time=True,
+                                         context={'tz': to_zone})
 
+    @api.model
+    def _get_checkout_date(self):
+        if self._context.get('tz'):
+            to_zone = self._context.get('tz')
+        else:
+            to_zone = 'UTC'
+        tm_delta = datetime.timedelta(days=1)
+        return datetime.datetime.strptime(_offset_format_timestamp1
+                                          (time.strftime("%Y-%m-%d 12:00:00"),
+                                           '%Y-%m-%d %H:%M:%S',
+                                           '%Y-%m-%d %H:%M:%S',
+                                           ignore_unparsable_time=True,
+                                           context={'tz': to_zone}),
+                                          '%Y-%m-%d %H:%M:%S') + tm_delta
+                                          
+    checkin_date = fields.Datetime('Check In', required=True, readonly=True, states={'draft': [('readonly', False)]},
+                                   default=_get_checkin_date)
+    checkout_date = fields.Datetime('Check Out', required=True, readonly=True, states={'draft': [('readonly', False)]},
+                                    default=_get_checkout_date)    
+    duration = fields.Float('Duration in Days',
+                            help="Number of days which will automatically "
+                            "count from the check-in and check-out date. ")
+    partner_discount = fields.Float(string='Returning Discount')
+    partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
+                             'Type', default=lambda *a: 'regular')
+    
+#     @api.multi
+#     def _prepare_invoice(self):
+#         invoice_vals = super(SaleOrder, self)._prepare_invoice()
+#         print "===_prepare_invoice==",invoice_vals
+#         invoice_vals['duration'] = self.duration or 1.0
+#         invoice_vals['checkin_date'] = self.checkin_date or False
+#         invoice_vals['checkout_date'] = self.checkout_date or False
+#         invoice_vals['partner_discount'] = self.partner_discount or 0.0
+#         invoice_vals['partner_type'] = self.partner_type        
+#         return invoice_vals
+    
+    def _prepare_invoice(self, cr, uid, order, lines, context=None):
+        invoice_vals = super(SaleOrder, self)._prepare_invoice(cr, uid, order, lines, context=context)
+        invoice_vals['duration'] = order.duration or 1.0
+        invoice_vals['checkin_date'] = order.checkin_date or False
+        invoice_vals['checkout_date'] = order.checkout_date or False
+        invoice_vals['partner_discount'] = order.partner_discount or 0.0
+        invoice_vals['partner_type'] = order.partner_type
+        return invoice_vals
+    
+    @api.onchange('checkout_date', 'checkin_date')
+    def onchange_dates(self):
+        '''
+        This mathod gives the duration between check in and checkout
+        if customer will leave only for some hour it would be considers
+        as a whole day.If customer will check in checkout for more or equal
+        hours, which configured in company as additional hours than it would
+        be consider as full days
+        --------------------------------------------------------------------
+        @param self: object pointer
+        @return: Duration and checkout_date
+        '''
+        company_obj = self.env['res.company']
+        configured_addition_hours = 0
+        company_ids = company_obj.search([])
+        if company_ids.ids:
+            configured_addition_hours = company_ids[0].additional_hours
+        myduration = 0
+        chckin = self.checkin_date
+        chckout = self.checkout_date
+        if chckin and chckout:
+            server_dt = DEFAULT_SERVER_DATETIME_FORMAT
+            chkin_dt = datetime.datetime.strptime(chckin, server_dt)
+            chkout_dt = datetime.datetime.strptime(chckout, server_dt)
+            dur = chkout_dt - chkin_dt
+            sec_dur = dur.seconds
+            if (not dur.days and not sec_dur) or (dur.days and not sec_dur):
+                myduration = dur.days
+            else:
+                myduration = dur.days + 1
+            if configured_addition_hours > 0:
+                additional_hours = abs((dur.seconds / 60) / 60)
+                if additional_hours >= configured_addition_hours:
+                    myduration += 1
+        self.duration = myduration
+    
+class SaleOrderLine(models.Model):
+    _inherit = 'sale.order.line'
+    
+    def _calc_line_base_price(self, cr, uid, line, context=None):
+        price = line.price_unit
+        if line.type == 'child':
+            price = price * (1 - (line.discount or 0.0) / 100.0)
+        return price * (1 - (line.partner_discount or 0.0) / 100.0)
+    
+    def _calc_line_quantity(self, cr, uid, line, context=None):
+        return line.product_uom_qty * line.duration
+    
+    def _amount_line(self, cr, uid, ids, field_name, arg, context=None):
+        tax_obj = self.pool.get('account.tax')
+        cur_obj = self.pool.get('res.currency')
+        res = {}
+        if context is None:
+            context = {}
+        for line in self.browse(cr, uid, ids, context=context):
+            price = self._calc_line_base_price(cr, uid, line, context=context)
+            qty = self._calc_line_quantity(cr, uid, line, context=context)
+            taxes = tax_obj.compute_all(cr, uid, line.tax_id, price, qty,
+                                        line.product_id,
+                                        line.order_id.partner_id)
+            cur = line.order_id.pricelist_id.currency_id
+            res[line.id] = cur_obj.round(cr, uid, cur, taxes['total'])
+        return res
+    
+    duration = fields.Float('Duration in Days', related='order_id.duration',
+                            help="Number of days which will automatically "
+                            "count from the check-in and check-out date. ")
+    partner_discount = fields.Float('Disc Cust. (%)', related='order_id.partner_discount', digits= dp.get_precision('Discount'))
+    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')   
+            
 class AccountInvoice(models.Model):
-
     _inherit = 'account.invoice'
-
+    
+    checkin_date = fields.Datetime('Check In', required=True, readonly=True, states={'draft': [('readonly', False)]})
+    checkout_date = fields.Datetime('Check Out', required=True, readonly=True, states={'draft': [('readonly', False)]})
+    
+    duration = fields.Float('Duration in Days',
+                            help="Number of days which will automatically "
+                            "count from the check-in and check-out date. ")
+    partner_discount = fields.Float('Discount Customer (%)', digits= dp.get_precision('Discount'))
+    partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
+                             'Customer Type', default=lambda *a: 'regular', readonly=True, states={'draft': [('readonly', False)]})
+    
     @api.multi
     def confirm_paid(self):
         '''
@@ -1391,3 +1632,88 @@ class AccountInvoice(models.Model):
             for pos_id in pos_ids:
                 pos_id.write({'state': 'done'})
         return res
+    
+class AccountInvoiceLine(models.Model):
+    _inherit = 'account.invoice.line'
+    
+    @api.one
+    @api.depends('price_unit', 'discount', 'invoice_line_tax_id', 'quantity',
+        'product_id', 'invoice_id.partner_id', 'invoice_id.currency_id')
+    def _compute_price(self):
+        price = self.price_unit
+        if self.type == 'child':
+            price = price * (1 - (self.discount or 0.0) / 100.0)
+        price = price * (1 - (self.partner_discount or 0.0) / 100.0)
+        taxes = self.invoice_line_tax_id.compute_all(price, self.quantity*self.duration, product=self.product_id, partner=self.invoice_id.partner_id)
+        self.price_subtotal = taxes['total']
+        if self.invoice_id:
+            self.price_subtotal = self.invoice_id.currency_id.round(self.price_subtotal)
+            
+    duration = fields.Float('Duration in Days', related='invoice_id.duration',
+                            help="Number of days which will automatically "
+                            "count from the check-in and check-out date. ")
+    partner_discount = fields.Float('Disc Cust. (%)', related='invoice_id.partner_discount', digits= dp.get_precision('Discount'))
+    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')
+
+class AccountInvoiceTax(models.Model):
+    _inherit = "account.invoice.tax"
+    
+    @api.v8
+    def compute(self, invoice):
+        tax_grouped = {}
+        currency = invoice.currency_id.with_context(date=invoice.date_invoice or fields.Date.context_today(invoice))
+        company_currency = invoice.company_id.currency_id
+        for line in invoice.invoice_line:
+            price = line.price_unit
+            if line.type == 'child':
+                price = price * (1 - (line.discount or 0.0) / 100.0) 
+            price = price * (1 - (line.partner_discount or 0.0) / 100.0) 
+            taxes = line.invoice_line_tax_id.compute_all(price, line.quantity*line.duration, line.product_id, invoice.partner_id)['taxes']
+            for tax in taxes:
+                val = {
+                    'invoice_id': invoice.id,
+                    'name': tax['name'],
+                    'amount': tax['amount'],
+                    'manual': False,
+                    'sequence': tax['sequence'],
+                    'base': currency.round(tax['price_unit'] * line['quantity']),
+                }
+                if invoice.type in ('out_invoice','in_invoice'):
+                    val['base_code_id'] = tax['base_code_id']
+                    val['tax_code_id'] = tax['tax_code_id']
+                    val['base_amount'] = currency.compute(val['base'] * tax['base_sign'], company_currency, round=False)
+                    val['tax_amount'] = currency.compute(val['amount'] * tax['tax_sign'], company_currency, round=False)
+                    val['account_id'] = tax['account_collected_id'] or line.account_id.id
+                    val['account_analytic_id'] = tax['account_analytic_collected_id']
+                else:
+                    val['base_code_id'] = tax['ref_base_code_id']
+                    val['tax_code_id'] = tax['ref_tax_code_id']
+                    val['base_amount'] = currency.compute(val['base'] * tax['ref_base_sign'], company_currency, round=False)
+                    val['tax_amount'] = currency.compute(val['amount'] * tax['ref_tax_sign'], company_currency, round=False)
+                    val['account_id'] = tax['account_paid_id'] or line.account_id.id
+                    val['account_analytic_id'] = tax['account_analytic_paid_id']
+
+                # If the taxes generate moves on the same financial account as the invoice line
+                # and no default analytic account is defined at the tax level, propagate the
+                # analytic account from the invoice line to the tax line. This is necessary
+                # in situations were (part of) the taxes cannot be reclaimed,
+                # to ensure the tax move is allocated to the proper analytic account.
+                if not val.get('account_analytic_id') and line.account_analytic_id and val['account_id'] == line.account_id.id:
+                    val['account_analytic_id'] = line.account_analytic_id.id
+
+                key = (val['tax_code_id'], val['base_code_id'], val['account_id'])
+                if not key in tax_grouped:
+                    tax_grouped[key] = val
+                else:
+                    tax_grouped[key]['base'] += val['base']
+                    tax_grouped[key]['amount'] += val['amount']
+                    tax_grouped[key]['base_amount'] += val['base_amount']
+                    tax_grouped[key]['tax_amount'] += val['tax_amount']
+
+        for t in tax_grouped.values():
+            t['base'] = currency.round(t['base'])
+            t['amount'] = currency.round(t['amount'])
+            t['base_amount'] = currency.round(t['base_amount'])
+            t['tax_amount'] = currency.round(t['tax_amount'])
+
+        return tax_grouped

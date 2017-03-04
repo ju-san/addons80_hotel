@@ -36,6 +36,7 @@
         "views/hotel_reservation_data.xml",
     ],
     "data": [
+        "security/hotel_reservation_security.xml",
         "security/ir.model.access.csv",
         "wizard/hotel_reservation_wizard.xml",
         "report/hotel_reservation_report.xml",
