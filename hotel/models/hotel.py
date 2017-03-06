@@ -1612,7 +1612,14 @@ class SaleOrderLine(models.Model):
                             "count from the check-in and check-out date. ")
     partner_discount = fields.Float('Disc Cust. (%)', related='order_id.partner_discount', digits= dp.get_precision('Discount'))
     type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')   
-            
+    
+    def _prepare_order_line_invoice_line(self, cr, uid, line, account_id=False, context=None):
+        """Save the layout when converting to an invoice line."""
+        invoice_vals = super(SaleOrderLine, self)._prepare_order_line_invoice_line(cr, uid, line, account_id=account_id, context=context)
+        if line.type:
+            invoice_vals['type'] = line.type
+        return invoice_vals
+    
 class AccountInvoice(models.Model):
     _inherit = 'account.invoice'
     
