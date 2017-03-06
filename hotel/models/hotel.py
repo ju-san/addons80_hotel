@@ -1102,6 +1102,18 @@ class HotelServiceLine(models.Model):
 #        sale_line_obj = self.env['sale.order.line'].browse(line_id)
 #        return sale_line_obj.copy(default=default)
 
+#     @api.multi
+#     def _amount_line(self, field_name, arg):
+#         '''
+#         @param self: object pointer
+#         @param field_name: Names of fields.
+#         @param arg: User defined arguments
+#         '''
+#         for folio in self:
+#             line = folio.service_line_id
+#             x = line._amount_line(field_name, arg)
+#         return x
+    
     @api.multi
     def _amount_line(self, field_name, arg):
         '''
@@ -1109,10 +1121,7 @@ class HotelServiceLine(models.Model):
         @param field_name: Names of fields.
         @param arg: User defined arguments
         '''
-        for folio in self:
-            line = folio.service_line_id
-            x = line._amount_line(field_name, arg)
-        return x
+        return self.env['sale.order.line']._amount_line(field_name, arg)
 
     @api.multi
     def _number_packages(self, field_name, arg):
@@ -1149,7 +1158,7 @@ class HotelServiceLine(models.Model):
                                        default=_service_checkin_date)
     ser_checkout_date = fields.Datetime('To Date', required=True,
                                         default=_service_checkout_date)
-    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')
+    #type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')
     
     @api.model
     def create(self, vals, check=True):
@@ -1653,7 +1662,7 @@ class AccountInvoiceLine(models.Model):
                             help="Number of days which will automatically "
                             "count from the check-in and check-out date. ")
     partner_discount = fields.Float('Disc Cust. (%)', related='invoice_id.partner_discount', digits= dp.get_precision('Discount'))
-    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')
+    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='child')
 
 class AccountInvoiceTax(models.Model):
     _inherit = "account.invoice.tax"

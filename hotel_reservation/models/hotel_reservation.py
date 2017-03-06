@@ -266,10 +266,12 @@ class HotelReservation(models.Model):
             return
         room_lines = []
         service_lines = []
-        if self.reservation_package_line.reserve_room:
-            room_lines = [self.reservation_package_line.reserve_room.id]
-        if self.reservation_package_line.reserve_ser:
-            service_lines = [self.reservation_package_line.reserve_ser.id]
+        #print '==_onchange_reservation_package_line==',self.reservation_package_line.reserve_room
+        for package in self.reservation_package_line:
+            if package.reserve_room:
+                room_lines.append(package.reserve_room.id)
+            if package.reserve_ser:
+                service_lines.append(package.reserve_ser.id)
         self.room_to_reserve = room_lines
         self.service_to_reserve = service_lines
         return
@@ -304,10 +306,11 @@ class HotelReservation(models.Model):
         for serv in self.service_to_reserve:
             self.write({'service_to_reserve': [(3, serv.id)]})
         #PACKAGE
-        if self.reservation_package_line.reserve_room:
-            room_lines = [self.reservation_package_line.reserve_room.id]
-        if self.reservation_package_line.reserve_ser:
-            service_lines = [self.reservation_package_line.reserve_ser.id]
+        for pckg in self.reservation_package_line:
+            if pckg.reserve_room:
+                room_lines.append(pckg.reserve_room.id)
+            if pckg.reserve_ser:
+                service_lines.append(pckg.reserve_ser.id)
         #ROOM
         for rroom in self.reservation_room_line:
             room_lines.append(rroom.room_id.id)
