@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+    <data>
+    <!-- Partner -->
+    <record id="view_partner_form_hotel" model="ir.ui.view">
+        <field name="name">res.partner.form.inherited</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form" />
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='website']" position="after">
+                <field name="partner_discount"/>
+                <field name="partner_type"/>
+            </xpath>
+        </field>
+    </record>
+	<!-- SO -->
+	<record id="view_order_form_hotel_folio" model="ir.ui.view">
+        <field name="name">sale.order.hotel.folio</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form" />
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='project_id']" position="after">
+                <field name="partner_discount"/>
+                <field name="partner_type"/>
+            </xpath>
+            <xpath expr="//field[@name='client_order_ref']" position="after">
+                <field name="checkin_date"/>
+                <field name="checkout_date"/>
+                <field name="duration"/>
+            </xpath>
+            <xpath expr="//field[@name='order_line']/tree/field[@name='product_uom_qty']" position="after">
+                <field name="duration" invisible="1"/>
+                <field name="partner_discount" invisible="1"/>
+                <field name="type"/>
+            </xpath>
+        </field>
+    </record>
+    <!-- INVOICE -->
+    <record id="invoice_form_hotel_folio" model="ir.ui.view">
+        <field name="name">account.invoice.hotel.folio</field>
+        <field name="model">account.invoice</field>
+        <field name="inherit_id" ref="account.invoice_form" />
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="partner_discount"/>
+                <field name="partner_type"/>
+            </xpath>
+            <xpath expr="//field[@name='account_id']" position="after">
+                <field name="checkin_date"/>
+                <field name="checkout_date"/>
+                <field name="duration"/>
+            </xpath>
+            <xpath expr="//field[@name='invoice_line']/tree/field[@name='quantity']" position="after">
+                <field name="duration" invisible="1"/>
+                <field name="partner_discount" invisible="1"/>
+                <field name="type"/>
+            </xpath>
+        </field>
+    </record>
+
+    </data>
+</openerp>

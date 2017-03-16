@@ -22,27 +22,19 @@
 #############################################################################
 
 {
-    "name": "Hotel Management",
+    "name": "Hotel Sale Management",
     "version": "0.10",
-    "author": "Serpent Consulting Services Pvt. Ltd., OpenERP SA,\
-    Odoo Community Association (OCA)",
+    "author": "Ade Anshori",
     "images": [],
     "license": "",
-    "category": "Generic Modules/Hotel Management",
-    "website": "http://www.serpentcs.com",
-    "depends": ["hotel_sale", "sale_stock", "hotel_report_layout"],
-    "demo": ["views/hotel_data.xml"],
+    "category": "Hotel Sale Management",
+    "website": "http://www.ju-san.net",
+    "depends": ["sale"],
+    "demo": [],
     "data": [
-        "security/hotel_security.xml",
-        "security/ir.model.access.csv",
-        "views/hotel_sequence.xml",
-        "views/hotel_folio_workflow.xml",
-        "views/hotel_report.xml",
-        "views/report_hotel_management.xml",
-        "views/hotel_view.xml",
-        "wizard/hotel_wizard.xml",
+        "views/sale_order_view.xml",
     ],
-    'css': ["static/src/css/room_kanban.css"],
+    'css': [""],
     "auto_install": False,
     "installable": True
 }

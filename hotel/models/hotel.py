@@ -1485,43 +1485,43 @@ class CurrencyExchangeRate(models.Model):
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
     
-    @api.model
-    def _get_checkin_date(self):
-        if self._context.get('tz'):
-            to_zone = self._context.get('tz')
-        else:
-            to_zone = 'UTC'
-        return _offset_format_timestamp1(time.strftime("%Y-%m-%d 12:00:00"),
-                                         '%Y-%m-%d %H:%M:%S',
-                                         '%Y-%m-%d %H:%M:%S',
-                                         ignore_unparsable_time=True,
-                                         context={'tz': to_zone})
-
-    @api.model
-    def _get_checkout_date(self):
-        if self._context.get('tz'):
-            to_zone = self._context.get('tz')
-        else:
-            to_zone = 'UTC'
-        tm_delta = datetime.timedelta(days=1)
-        return datetime.datetime.strptime(_offset_format_timestamp1
-                                          (time.strftime("%Y-%m-%d 12:00:00"),
-                                           '%Y-%m-%d %H:%M:%S',
-                                           '%Y-%m-%d %H:%M:%S',
-                                           ignore_unparsable_time=True,
-                                           context={'tz': to_zone}),
-                                          '%Y-%m-%d %H:%M:%S') + tm_delta
-                                          
-    checkin_date = fields.Datetime('Check In', required=True, readonly=True, states={'draft': [('readonly', False)]},
-                                   default=_get_checkin_date)
-    checkout_date = fields.Datetime('Check Out', required=True, readonly=True, states={'draft': [('readonly', False)]},
-                                    default=_get_checkout_date)    
-    duration = fields.Float('Duration in Days',
-                            help="Number of days which will automatically "
-                            "count from the check-in and check-out date. ")
-    partner_discount = fields.Float(string='Returning Discount')
-    partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
-                             'Type', default=lambda *a: 'regular')
+#     @api.model
+#     def _get_checkin_date(self):
+#         if self._context.get('tz'):
+#             to_zone = self._context.get('tz')
+#         else:
+#             to_zone = 'UTC'
+#         return _offset_format_timestamp1(time.strftime("%Y-%m-%d 12:00:00"),
+#                                          '%Y-%m-%d %H:%M:%S',
+#                                          '%Y-%m-%d %H:%M:%S',
+#                                          ignore_unparsable_time=True,
+#                                          context={'tz': to_zone})
+# 
+#     @api.model
+#     def _get_checkout_date(self):
+#         if self._context.get('tz'):
+#             to_zone = self._context.get('tz')
+#         else:
+#             to_zone = 'UTC'
+#         tm_delta = datetime.timedelta(days=1)
+#         return datetime.datetime.strptime(_offset_format_timestamp1
+#                                           (time.strftime("%Y-%m-%d 12:00:00"),
+#                                            '%Y-%m-%d %H:%M:%S',
+#                                            '%Y-%m-%d %H:%M:%S',
+#                                            ignore_unparsable_time=True,
+#                                            context={'tz': to_zone}),
+#                                           '%Y-%m-%d %H:%M:%S') + tm_delta
+#                                           
+#     checkin_date = fields.Datetime('Check In', required=True, readonly=True, states={'draft': [('readonly', False)]},
+#                                    default=_get_checkin_date)
+#     checkout_date = fields.Datetime('Check Out', required=True, readonly=True, states={'draft': [('readonly', False)]},
+#                                     default=_get_checkout_date)    
+#     duration = fields.Float('Duration in Days',
+#                             help="Number of days which will automatically "
+#                             "count from the check-in and check-out date. ")
+#     partner_discount = fields.Float(string='Returning Discount')
+#     partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
+#                              'Type', default=lambda *a: 'regular')
     
 #     @api.multi
 #     def _prepare_invoice(self):
@@ -1534,14 +1534,14 @@ class SaleOrder(models.Model):
 #         invoice_vals['partner_type'] = self.partner_type        
 #         return invoice_vals
     
-    def _prepare_invoice(self, cr, uid, order, lines, context=None):
-        invoice_vals = super(SaleOrder, self)._prepare_invoice(cr, uid, order, lines, context=context)
-        invoice_vals['duration'] = order.duration or 1.0
-        invoice_vals['checkin_date'] = order.checkin_date or False
-        invoice_vals['checkout_date'] = order.checkout_date or False
-        invoice_vals['partner_discount'] = order.partner_discount or 0.0
-        invoice_vals['partner_type'] = order.partner_type
-        return invoice_vals
+#     def _prepare_invoice(self, cr, uid, order, lines, context=None):
+#         invoice_vals = super(SaleOrder, self)._prepare_invoice(cr, uid, order, lines, context=context)
+#         invoice_vals['duration'] = order.duration or 1.0
+#         invoice_vals['checkin_date'] = order.checkin_date or False
+#         invoice_vals['checkout_date'] = order.checkout_date or False
+#         invoice_vals['partner_discount'] = order.partner_discount or 0.0
+#         invoice_vals['partner_type'] = order.partner_type
+#         return invoice_vals
     
     @api.onchange('checkout_date', 'checkin_date')
     def onchange_dates(self):
@@ -1579,157 +1579,157 @@ class SaleOrder(models.Model):
                     myduration += 1
         self.duration = myduration
     
-class SaleOrderLine(models.Model):
-    _inherit = 'sale.order.line'
-    
-    def _calc_line_base_price(self, cr, uid, line, context=None):
-        price = line.price_unit
-        if line.type == 'child':
-            price = price * (1 - (line.discount or 0.0) / 100.0)
-        return price * (1 - (line.partner_discount or 0.0) / 100.0)
-    
-    def _calc_line_quantity(self, cr, uid, line, context=None):
-        return line.product_uom_qty * line.duration
-    
-    def _amount_line(self, cr, uid, ids, field_name, arg, context=None):
-        tax_obj = self.pool.get('account.tax')
-        cur_obj = self.pool.get('res.currency')
-        res = {}
-        if context is None:
-            context = {}
-        for line in self.browse(cr, uid, ids, context=context):
-            price = self._calc_line_base_price(cr, uid, line, context=context)
-            qty = self._calc_line_quantity(cr, uid, line, context=context)
-            taxes = tax_obj.compute_all(cr, uid, line.tax_id, price, qty,
-                                        line.product_id,
-                                        line.order_id.partner_id)
-            cur = line.order_id.pricelist_id.currency_id
-            res[line.id] = cur_obj.round(cr, uid, cur, taxes['total'])
-        return res
-    
-    duration = fields.Float('Duration in Days', related='order_id.duration',
-                            help="Number of days which will automatically "
-                            "count from the check-in and check-out date. ")
-    partner_discount = fields.Float('Disc Cust. (%)', related='order_id.partner_discount', digits= dp.get_precision('Discount'))
-    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')   
-    
-    def _prepare_order_line_invoice_line(self, cr, uid, line, account_id=False, context=None):
-        """Save the layout when converting to an invoice line."""
-        invoice_vals = super(SaleOrderLine, self)._prepare_order_line_invoice_line(cr, uid, line, account_id=account_id, context=context)
-        if line.type:
-            invoice_vals['type'] = line.type
-        return invoice_vals
-    
-class AccountInvoice(models.Model):
-    _inherit = 'account.invoice'
-    
-    checkin_date = fields.Datetime('Check In', required=True, readonly=True, states={'draft': [('readonly', False)]})
-    checkout_date = fields.Datetime('Check Out', required=True, readonly=True, states={'draft': [('readonly', False)]})
-    
-    duration = fields.Float('Duration in Days',
-                            help="Number of days which will automatically "
-                            "count from the check-in and check-out date. ")
-    partner_discount = fields.Float('Discount Customer (%)', digits= dp.get_precision('Discount'))
-    partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
-                             'Customer Type', default=lambda *a: 'regular', readonly=True, states={'draft': [('readonly', False)]})
-    
-    @api.multi
-    def confirm_paid(self):
-        '''
-        This method change pos orders states to done when folio invoice
-        is in done.
-        ----------------------------------------------------------
-        @param self: object pointer
-        '''
-        pos_order_obj = self.env['pos.order']
-        res = super(AccountInvoice, self).confirm_paid()
-        pos_ids = pos_order_obj.search([('invoice_id', 'in', self._ids)])
-        if pos_ids.ids:
-            for pos_id in pos_ids:
-                pos_id.write({'state': 'done'})
-        return res
-    
-class AccountInvoiceLine(models.Model):
-    _inherit = 'account.invoice.line'
-    
-    @api.one
-    @api.depends('price_unit', 'discount', 'invoice_line_tax_id', 'quantity',
-        'product_id', 'invoice_id.partner_id', 'invoice_id.currency_id')
-    def _compute_price(self):
-        price = self.price_unit
-        if self.type == 'child':
-            price = price * (1 - (self.discount or 0.0) / 100.0)
-        price = price * (1 - (self.partner_discount or 0.0) / 100.0)
-        taxes = self.invoice_line_tax_id.compute_all(price, self.quantity*self.duration, product=self.product_id, partner=self.invoice_id.partner_id)
-        self.price_subtotal = taxes['total']
-        if self.invoice_id:
-            self.price_subtotal = self.invoice_id.currency_id.round(self.price_subtotal)
-            
-    duration = fields.Float('Duration in Days', related='invoice_id.duration',
-                            help="Number of days which will automatically "
-                            "count from the check-in and check-out date. ")
-    partner_discount = fields.Float('Disc Cust. (%)', related='invoice_id.partner_discount', digits= dp.get_precision('Discount'))
-    type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='child')
+# class SaleOrderLine(models.Model):
+#     _inherit = 'sale.order.line'
+#     
+#     def _calc_line_base_price(self, cr, uid, line, context=None):
+#         price = line.price_unit
+#         if line.type == 'child':
+#             price = price * (1 - (line.discount or 0.0) / 100.0)
+#         return price * (1 - (line.partner_discount or 0.0) / 100.0)
+#     
+#     def _calc_line_quantity(self, cr, uid, line, context=None):
+#         return line.product_uom_qty * line.duration
+#     
+#     def _amount_line(self, cr, uid, ids, field_name, arg, context=None):
+#         tax_obj = self.pool.get('account.tax')
+#         cur_obj = self.pool.get('res.currency')
+#         res = {}
+#         if context is None:
+#             context = {}
+#         for line in self.browse(cr, uid, ids, context=context):
+#             price = self._calc_line_base_price(cr, uid, line, context=context)
+#             qty = self._calc_line_quantity(cr, uid, line, context=context)
+#             taxes = tax_obj.compute_all(cr, uid, line.tax_id, price, qty,
+#                                         line.product_id,
+#                                         line.order_id.partner_id)
+#             cur = line.order_id.pricelist_id.currency_id
+#             res[line.id] = cur_obj.round(cr, uid, cur, taxes['total'])
+#         return res
+#     
+#     duration = fields.Float('Duration in Days', related='order_id.duration',
+#                             help="Number of days which will automatically "
+#                             "count from the check-in and check-out date. ")
+#     partner_discount = fields.Float('Disc Cust. (%)', related='order_id.partner_discount', digits= dp.get_precision('Discount'))
+#     type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')   
+#     
+#     def _prepare_order_line_invoice_line(self, cr, uid, line, account_id=False, context=None):
+#         """Save the layout when converting to an invoice line."""
+#         invoice_vals = super(SaleOrderLine, self)._prepare_order_line_invoice_line(cr, uid, line, account_id=account_id, context=context)
+#         if line.type:
+#             invoice_vals['type'] = line.type
+#         return invoice_vals
+#     
+# class AccountInvoice(models.Model):
+#     _inherit = 'account.invoice'
+#     
+#     checkin_date = fields.Datetime('Check In', required=True, readonly=True, states={'draft': [('readonly', False)]})
+#     checkout_date = fields.Datetime('Check Out', required=True, readonly=True, states={'draft': [('readonly', False)]})
+#     
+#     duration = fields.Float('Duration in Days',
+#                             help="Number of days which will automatically "
+#                             "count from the check-in and check-out date. ")
+#     partner_discount = fields.Float('Discount Customer (%)', digits= dp.get_precision('Discount'))
+#     partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
+#                              'Customer Type', default=lambda *a: 'regular', readonly=True, states={'draft': [('readonly', False)]})
+#     
+#     @api.multi
+#     def confirm_paid(self):
+#         '''
+#         This method change pos orders states to done when folio invoice
+#         is in done.
+#         ----------------------------------------------------------
+#         @param self: object pointer
+#         '''
+#         pos_order_obj = self.env['pos.order']
+#         res = super(AccountInvoice, self).confirm_paid()
+#         pos_ids = pos_order_obj.search([('invoice_id', 'in', self._ids)])
+#         if pos_ids.ids:
+#             for pos_id in pos_ids:
+#                 pos_id.write({'state': 'done'})
+#         return res
+#     
+# class AccountInvoiceLine(models.Model):
+#     _inherit = 'account.invoice.line'
+#     
+#     @api.one
+#     @api.depends('price_unit', 'discount', 'invoice_line_tax_id', 'quantity',
+#         'product_id', 'invoice_id.partner_id', 'invoice_id.currency_id')
+#     def _compute_price(self):
+#         price = self.price_unit
+#         if self.type == 'child':
+#             price = price * (1 - (self.discount or 0.0) / 100.0)
+#         price = price * (1 - (self.partner_discount or 0.0) / 100.0)
+#         taxes = self.invoice_line_tax_id.compute_all(price, self.quantity*self.duration, product=self.product_id, partner=self.invoice_id.partner_id)
+#         self.price_subtotal = taxes['total']
+#         if self.invoice_id:
+#             self.price_subtotal = self.invoice_id.currency_id.round(self.price_subtotal)
+#             
+#     duration = fields.Float('Duration in Days', related='invoice_id.duration',
+#                             help="Number of days which will automatically "
+#                             "count from the check-in and check-out date. ")
+#     partner_discount = fields.Float('Disc Cust. (%)', related='invoice_id.partner_discount', digits= dp.get_precision('Discount'))
+#     type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='child')
 
-class AccountInvoiceTax(models.Model):
-    _inherit = "account.invoice.tax"
-    
-    @api.v8
-    def compute(self, invoice):
-        tax_grouped = {}
-        currency = invoice.currency_id.with_context(date=invoice.date_invoice or fields.Date.context_today(invoice))
-        company_currency = invoice.company_id.currency_id
-        for line in invoice.invoice_line:
-            price = line.price_unit
-            if line.type == 'child':
-                price = price * (1 - (line.discount or 0.0) / 100.0) 
-            price = price * (1 - (line.partner_discount or 0.0) / 100.0) 
-            taxes = line.invoice_line_tax_id.compute_all(price, line.quantity*line.duration, line.product_id, invoice.partner_id)['taxes']
-            for tax in taxes:
-                val = {
-                    'invoice_id': invoice.id,
-                    'name': tax['name'],
-                    'amount': tax['amount'],
-                    'manual': False,
-                    'sequence': tax['sequence'],
-                    'base': currency.round(tax['price_unit'] * line['quantity']),
-                }
-                if invoice.type in ('out_invoice','in_invoice'):
-                    val['base_code_id'] = tax['base_code_id']
-                    val['tax_code_id'] = tax['tax_code_id']
-                    val['base_amount'] = currency.compute(val['base'] * tax['base_sign'], company_currency, round=False)
-                    val['tax_amount'] = currency.compute(val['amount'] * tax['tax_sign'], company_currency, round=False)
-                    val['account_id'] = tax['account_collected_id'] or line.account_id.id
-                    val['account_analytic_id'] = tax['account_analytic_collected_id']
-                else:
-                    val['base_code_id'] = tax['ref_base_code_id']
-                    val['tax_code_id'] = tax['ref_tax_code_id']
-                    val['base_amount'] = currency.compute(val['base'] * tax['ref_base_sign'], company_currency, round=False)
-                    val['tax_amount'] = currency.compute(val['amount'] * tax['ref_tax_sign'], company_currency, round=False)
-                    val['account_id'] = tax['account_paid_id'] or line.account_id.id
-                    val['account_analytic_id'] = tax['account_analytic_paid_id']
-
-                # If the taxes generate moves on the same financial account as the invoice line
-                # and no default analytic account is defined at the tax level, propagate the
-                # analytic account from the invoice line to the tax line. This is necessary
-                # in situations were (part of) the taxes cannot be reclaimed,
-                # to ensure the tax move is allocated to the proper analytic account.
-                if not val.get('account_analytic_id') and line.account_analytic_id and val['account_id'] == line.account_id.id:
-                    val['account_analytic_id'] = line.account_analytic_id.id
-
-                key = (val['tax_code_id'], val['base_code_id'], val['account_id'])
-                if not key in tax_grouped:
-                    tax_grouped[key] = val
-                else:
-                    tax_grouped[key]['base'] += val['base']
-                    tax_grouped[key]['amount'] += val['amount']
-                    tax_grouped[key]['base_amount'] += val['base_amount']
-                    tax_grouped[key]['tax_amount'] += val['tax_amount']
-
-        for t in tax_grouped.values():
-            t['base'] = currency.round(t['base'])
-            t['amount'] = currency.round(t['amount'])
-            t['base_amount'] = currency.round(t['base_amount'])
-            t['tax_amount'] = currency.round(t['tax_amount'])
-
-        return tax_grouped
+# class AccountInvoiceTax(models.Model):
+#     _inherit = "account.invoice.tax"
+#     
+#     @api.v8
+#     def compute(self, invoice):
+#         tax_grouped = {}
+#         currency = invoice.currency_id.with_context(date=invoice.date_invoice or fields.Date.context_today(invoice))
+#         company_currency = invoice.company_id.currency_id
+#         for line in invoice.invoice_line:
+#             price = line.price_unit
+#             if line.type == 'child':
+#                 price = price * (1 - (line.discount or 0.0) / 100.0) 
+#             price = price * (1 - (line.partner_discount or 0.0) / 100.0) 
+#             taxes = line.invoice_line_tax_id.compute_all(price, line.quantity*line.duration, line.product_id, invoice.partner_id)['taxes']
+#             for tax in taxes:
+#                 val = {
+#                     'invoice_id': invoice.id,
+#                     'name': tax['name'],
+#                     'amount': tax['amount'],
+#                     'manual': False,
+#                     'sequence': tax['sequence'],
+#                     'base': currency.round(tax['price_unit'] * line['quantity']),
+#                 }
+#                 if invoice.type in ('out_invoice','in_invoice'):
+#                     val['base_code_id'] = tax['base_code_id']
+#                     val['tax_code_id'] = tax['tax_code_id']
+#                     val['base_amount'] = currency.compute(val['base'] * tax['base_sign'], company_currency, round=False)
+#                     val['tax_amount'] = currency.compute(val['amount'] * tax['tax_sign'], company_currency, round=False)
+#                     val['account_id'] = tax['account_collected_id'] or line.account_id.id
+#                     val['account_analytic_id'] = tax['account_analytic_collected_id']
+#                 else:
+#                     val['base_code_id'] = tax['ref_base_code_id']
+#                     val['tax_code_id'] = tax['ref_tax_code_id']
+#                     val['base_amount'] = currency.compute(val['base'] * tax['ref_base_sign'], company_currency, round=False)
+#                     val['tax_amount'] = currency.compute(val['amount'] * tax['ref_tax_sign'], company_currency, round=False)
+#                     val['account_id'] = tax['account_paid_id'] or line.account_id.id
+#                     val['account_analytic_id'] = tax['account_analytic_paid_id']
+# 
+#                 # If the taxes generate moves on the same financial account as the invoice line
+#                 # and no default analytic account is defined at the tax level, propagate the
+#                 # analytic account from the invoice line to the tax line. This is necessary
+#                 # in situations were (part of) the taxes cannot be reclaimed,
+#                 # to ensure the tax move is allocated to the proper analytic account.
+#                 if not val.get('account_analytic_id') and line.account_analytic_id and val['account_id'] == line.account_id.id:
+#                     val['account_analytic_id'] = line.account_analytic_id.id
+# 
+#                 key = (val['tax_code_id'], val['base_code_id'], val['account_id'])
+#                 if not key in tax_grouped:
+#                     tax_grouped[key] = val
+#                 else:
+#                     tax_grouped[key]['base'] += val['base']
+#                     tax_grouped[key]['amount'] += val['amount']
+#                     tax_grouped[key]['base_amount'] += val['base_amount']
+#                     tax_grouped[key]['tax_amount'] += val['tax_amount']
+# 
+#         for t in tax_grouped.values():
+#             t['base'] = currency.round(t['base'])
+#             t['amount'] = currency.round(t['amount'])
+#             t['base_amount'] = currency.round(t['base_amount'])
+#             t['tax_amount'] = currency.round(t['tax_amount'])
+# 
+#         return tax_grouped

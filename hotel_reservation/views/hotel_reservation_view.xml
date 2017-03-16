@@ -280,7 +280,7 @@
             <field name="context">{}</field>
         </record>
         <menuitem  id="menu_hotel_reservation" name="Reservations" parent="hotel.hotel_management_menu" sequence="1"/>
-        '
+        
         
         <record id="view_partner_form_hotel" model="ir.ui.view">
             <field name="name">res.partner.form.inherited</field>

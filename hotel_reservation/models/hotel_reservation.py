@@ -30,20 +30,20 @@ import datetime
 import time
 
 
-class ResPartner(models.Model):
-    _inherit = 'res.partner'
-
-    partner_discount = fields.Float(string='Returning Discount')
-    partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
-                             'Type', default=lambda *a: 'regular')
-    
-    @api.onchange('partner_discount')
-    def _onchange_partner_discount(self):
-        if not self.partner_discount:
-            return
-        if self.partner_discount > 100.0:
-            raise except_orm(_('Error'), _('Discount Max is 100%.'))
-    
+# class ResPartner(models.Model):
+#     _inherit = 'res.partner'
+# 
+#     partner_discount = fields.Float(string='Returning Discount')
+#     partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
+#                              'Type', default=lambda *a: 'regular')
+#     
+#     @api.onchange('partner_discount')
+#     def _onchange_partner_discount(self):
+#         if not self.partner_discount:
+#             return
+#         if self.partner_discount > 100.0:
+#             raise except_orm(_('Error'), _('Discount Max is 100%.'))
+#     
     
 class HotelFolio(models.Model):
     _inherit = 'hotel.folio'

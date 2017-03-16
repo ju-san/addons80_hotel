@@ -17,7 +17,7 @@
         </field>
     </record>
 	<!-- SO -->
-	<record id="view_order_form_hotel_folio" model="ir.ui.view">
+	<!-- <record id="view_order_form_hotel_folio" model="ir.ui.view">
         <field name="name">sale.order.hotel.folio</field>
         <field name="model">sale.order</field>
         <field name="inherit_id" ref="sale.view_order_form" />
@@ -37,9 +37,9 @@
                 <field name="type"/>
             </xpath>
         </field>
-    </record>
+    </record> -->
     <!-- INVOICE -->
-    <record id="invoice_form_hotel_folio" model="ir.ui.view">
+    <!-- <record id="invoice_form_hotel_folio" model="ir.ui.view">
         <field name="name">account.invoice.hotel.folio</field>
         <field name="model">account.invoice</field>
         <field name="inherit_id" ref="account.invoice_form" />
@@ -59,7 +59,7 @@
                 <field name="type"/>
             </xpath>
         </field>
-    </record>
+    </record> -->
     <!-- ###############################################
          #############Company Configuration#############
          ###############################################
