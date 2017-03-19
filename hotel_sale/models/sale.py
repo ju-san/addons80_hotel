@@ -142,7 +142,8 @@ class SaleOrderLine(models.Model):
         return price * (1 - (line.partner_discount or 0.0) / 100.0)
     
     def _calc_line_quantity(self, cr, uid, line, context=None):
-        return line.product_uom_qty * line.duration
+        return line.product_uom_qty
+        #return line.product_uom_qty * line.duration
     
     def _amount_line(self, cr, uid, ids, field_name, arg, context=None):
         tax_obj = self.pool.get('account.tax')
@@ -276,7 +277,8 @@ class AccountInvoiceLine(models.Model):
         if self.type == 'child':
             price = price * (1 - (self.discount or 0.0) / 100.0)
         price = price * (1 - (self.partner_discount or 0.0) / 100.0)
-        taxes = self.invoice_line_tax_id.compute_all(price, self.quantity*self.duration, product=self.product_id, partner=self.invoice_id.partner_id)
+        taxes = self.invoice_line_tax_id.compute_all(price, self.quantity, product=self.product_id, partner=self.invoice_id.partner_id)
+        #taxes = self.invoice_line_tax_id.compute_all(price, self.quantity*self.duration, product=self.product_id, partner=self.invoice_id.partner_id)
         self.price_subtotal = taxes['total']
         if self.invoice_id:
             self.price_subtotal = self.invoice_id.currency_id.round(self.price_subtotal)
@@ -302,7 +304,8 @@ class AccountInvoiceTax(models.Model):
             if line.type == 'child':
                 price = price * (1 - (line.discount or 0.0) / 100.0) 
             price = price * (1 - (line.partner_discount or 0.0) / 100.0) 
-            taxes = line.invoice_line_tax_id.compute_all(price, line.quantity*line.duration, line.product_id, invoice.partner_id)['taxes']
+            taxes = line.invoice_line_tax_id.compute_all(price, line.quantity, line.product_id, invoice.partner_id)['taxes']
+            #taxes = line.invoice_line_tax_id.compute_all(price, line.quantity*line.duration, line.product_id, invoice.partner_id)['taxes']
             for tax in taxes:
                 val = {
                     'invoice_id': invoice.id,
