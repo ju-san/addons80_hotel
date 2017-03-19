@@ -23,13 +23,15 @@
                 <field name="partner_discount"/>
                 <field name="partner_type"/>
             </xpath>
-            <xpath expr="//field[@name='client_order_ref']" position="after">
+            <!-- <xpath expr="//field[@name='client_order_ref']" position="after">
                 <field name="checkin_date"/>
                 <field name="checkout_date"/>
                 <field name="duration"/>
-            </xpath>
+            </xpath> -->
             <xpath expr="//field[@name='order_line']/tree/field[@name='product_uom_qty']" position="after">
-                <field name="duration" invisible="1"/>
+                <field name="checkin_date"/>
+                <field name="checkout_date"/>
+                <field name="duration" invisible="0"/>
                 <field name="partner_discount" invisible="1"/>
                 <field name="type"/>
             </xpath>
@@ -45,13 +47,15 @@
                 <field name="partner_discount"/>
                 <field name="partner_type"/>
             </xpath>
-            <xpath expr="//field[@name='account_id']" position="after">
+            <!-- <xpath expr="//field[@name='account_id']" position="after">
                 <field name="checkin_date"/>
                 <field name="checkout_date"/>
                 <field name="duration"/>
-            </xpath>
+            </xpath> -->
             <xpath expr="//field[@name='invoice_line']/tree/field[@name='quantity']" position="after">
-                <field name="duration" invisible="1"/>
+                <field name="checkin_date"/>
+                <field name="checkout_date"/>
+                <field name="duration" invisible="0"/>
                 <field name="partner_discount" invisible="1"/>
                 <field name="type"/>
             </xpath>

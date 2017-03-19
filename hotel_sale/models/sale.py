@@ -99,6 +99,67 @@ class ResPartner(models.Model):
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
     
+    partner_discount = fields.Float(string='Returning Discount')
+    partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
+                             'Type', default=lambda *a: 'regular')
+    
+    
+    def onchange_partner_id(self, cr, uid, ids, part, context=None):
+        val = super(SaleOrder, self).onchange_partner_id(cr, uid, ids, part, context=context)
+        part = self.pool.get('res.partner').browse(cr, uid, part, context=context)
+        val['value'].update({'partner_discount': part.partner_discount, 'partner_type': part.partner_type})
+        print "===onchange_partner_id===",val
+        return val
+                
+#     @api.multi
+#     def _prepare_invoice(self):
+#         invoice_vals = super(SaleOrder, self)._prepare_invoice()
+#         print "===_prepare_invoice==",invoice_vals
+#         invoice_vals['duration'] = self.duration or 1.0
+#         invoice_vals['checkin_date'] = self.checkin_date or False
+#         invoice_vals['checkout_date'] = self.checkout_date or False
+#         invoice_vals['partner_discount'] = self.partner_discount or 0.0
+#         invoice_vals['partner_type'] = self.partner_type        
+#         return invoice_vals
+    
+    def _prepare_invoice(self, cr, uid, order, lines, context=None):
+        invoice_vals = super(SaleOrder, self)._prepare_invoice(cr, uid, order, lines, context=context)
+        #invoice_vals['duration'] = order.duration or 1.0
+        #invoice_vals['checkin_date'] = order.checkin_date or False
+        #invoice_vals['checkout_date'] = order.checkout_date or False
+        invoice_vals['partner_discount'] = order.partner_discount or 0.0
+        invoice_vals['partner_type'] = order.partner_type
+        return invoice_vals
+    
+    
+class SaleOrderLine(models.Model):
+    _inherit = 'sale.order.line'
+    
+    def _calc_line_base_price(self, cr, uid, line, context=None):
+        price = line.price_unit
+        if line.type == 'child':
+            price = price * (1 - (line.discount or 0.0) / 100.0)
+        return price * (1 - (line.partner_discount or 0.0) / 100.0)
+    
+    def _calc_line_quantity(self, cr, uid, line, context=None):
+        return line.product_uom_qty * line.duration
+    
+    def _amount_line(self, cr, uid, ids, field_name, arg, context=None):
+        tax_obj = self.pool.get('account.tax')
+        cur_obj = self.pool.get('res.currency')
+        res = {}
+        if context is None:
+            context = {}
+        for line in self.browse(cr, uid, ids, context=context):
+            price = self._calc_line_base_price(cr, uid, line, context=context)
+            qty = self._calc_line_quantity(cr, uid, line, context=context)
+            taxes = tax_obj.compute_all(cr, uid, line.tax_id, price, qty,
+                                        line.product_id,
+                                        line.order_id.partner_id)
+            cur = line.order_id.pricelist_id.currency_id
+            res[line.id] = cur_obj.round(cr, uid, cur, taxes['total'])
+        return res
+    
     @api.model
     def _get_checkin_date(self):
         if self._context.get('tz'):
@@ -125,44 +186,7 @@ class SaleOrder(models.Model):
                                            ignore_unparsable_time=True,
                                            context={'tz': to_zone}),
                                           '%Y-%m-%d %H:%M:%S') + tm_delta
-                                          
-    checkin_date = fields.Datetime('Check In', required=True, readonly=True, states={'draft': [('readonly', False)]},
-                                   default=_get_checkin_date)
-    checkout_date = fields.Datetime('Check Out', required=True, readonly=True, states={'draft': [('readonly', False)]},
-                                    default=_get_checkout_date)    
-    duration = fields.Float('Duration in Days',
-                            help="Number of days which will automatically "
-                            "count from the check-in and check-out date. ")
-    partner_discount = fields.Float(string='Returning Discount')
-    partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
-                             'Type', default=lambda *a: 'regular')
     
-    
-    def onchange_partner_id(self, cr, uid, ids, part, context=None):
-        val = super(SaleOrder, self).onchange_partner_id(cr, uid, ids, part, context=context)
-        part = self.pool.get('res.partner').browse(cr, uid, part, context=context)
-        val.update({'partner_discount': part.partner_discount, 'partner_type': part.partner_type})
-        return {'value': val}
-                
-#     @api.multi
-#     def _prepare_invoice(self):
-#         invoice_vals = super(SaleOrder, self)._prepare_invoice()
-#         print "===_prepare_invoice==",invoice_vals
-#         invoice_vals['duration'] = self.duration or 1.0
-#         invoice_vals['checkin_date'] = self.checkin_date or False
-#         invoice_vals['checkout_date'] = self.checkout_date or False
-#         invoice_vals['partner_discount'] = self.partner_discount or 0.0
-#         invoice_vals['partner_type'] = self.partner_type        
-#         return invoice_vals
-    
-    def _prepare_invoice(self, cr, uid, order, lines, context=None):
-        invoice_vals = super(SaleOrder, self)._prepare_invoice(cr, uid, order, lines, context=context)
-        invoice_vals['duration'] = order.duration or 1.0
-        invoice_vals['checkin_date'] = order.checkin_date or False
-        invoice_vals['checkout_date'] = order.checkout_date or False
-        invoice_vals['partner_discount'] = order.partner_discount or 0.0
-        invoice_vals['partner_type'] = order.partner_type
-        return invoice_vals
     
     @api.onchange('checkout_date', 'checkin_date')
     def onchange_dates(self):
@@ -199,36 +223,10 @@ class SaleOrder(models.Model):
 #                 if additional_hours >= configured_addition_hours:
 #                     myduration += 1
         self.duration = myduration
-    
-class SaleOrderLine(models.Model):
-    _inherit = 'sale.order.line'
-    
-    def _calc_line_base_price(self, cr, uid, line, context=None):
-        price = line.price_unit
-        if line.type == 'child':
-            price = price * (1 - (line.discount or 0.0) / 100.0)
-        return price * (1 - (line.partner_discount or 0.0) / 100.0)
-    
-    def _calc_line_quantity(self, cr, uid, line, context=None):
-        return line.product_uom_qty * line.duration
-    
-    def _amount_line(self, cr, uid, ids, field_name, arg, context=None):
-        tax_obj = self.pool.get('account.tax')
-        cur_obj = self.pool.get('res.currency')
-        res = {}
-        if context is None:
-            context = {}
-        for line in self.browse(cr, uid, ids, context=context):
-            price = self._calc_line_base_price(cr, uid, line, context=context)
-            qty = self._calc_line_quantity(cr, uid, line, context=context)
-            taxes = tax_obj.compute_all(cr, uid, line.tax_id, price, qty,
-                                        line.product_id,
-                                        line.order_id.partner_id)
-            cur = line.order_id.pricelist_id.currency_id
-            res[line.id] = cur_obj.round(cr, uid, cur, taxes['total'])
-        return res
-    
-    duration = fields.Float('Duration in Days', related='order_id.duration',
+                        
+    checkin_date = fields.Datetime('Check In', default=_get_checkin_date)
+    checkout_date = fields.Datetime('Check Out', default=_get_checkout_date)    
+    duration = fields.Float('Duration in Days',
                             help="Number of days which will automatically "
                             "count from the check-in and check-out date. ")
     partner_discount = fields.Float('Disc Cust. (%)', related='order_id.partner_discount', digits= dp.get_precision('Discount'))
@@ -239,17 +237,14 @@ class SaleOrderLine(models.Model):
         invoice_vals = super(SaleOrderLine, self)._prepare_order_line_invoice_line(cr, uid, line, account_id=account_id, context=context)
         if line.type:
             invoice_vals['type'] = line.type
+            invoice_vals['duration'] = line.duration or 1.0
+            invoice_vals['checkin_date'] = line.checkin_date or False
+            invoice_vals['checkout_date'] = line.checkout_date or False
         return invoice_vals
     
 class AccountInvoice(models.Model):
     _inherit = 'account.invoice'
     
-    checkin_date = fields.Datetime('Check In', required=True, readonly=True, states={'draft': [('readonly', False)]})
-    checkout_date = fields.Datetime('Check Out', required=True, readonly=True, states={'draft': [('readonly', False)]})
-    
-    duration = fields.Float('Duration in Days',
-                            help="Number of days which will automatically "
-                            "count from the check-in and check-out date. ")
     partner_discount = fields.Float('Discount Customer (%)', digits= dp.get_precision('Discount'))
     partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
                              'Customer Type', default=lambda *a: 'regular', readonly=True, states={'draft': [('readonly', False)]})
@@ -285,8 +280,10 @@ class AccountInvoiceLine(models.Model):
         self.price_subtotal = taxes['total']
         if self.invoice_id:
             self.price_subtotal = self.invoice_id.currency_id.round(self.price_subtotal)
-            
-    duration = fields.Float('Duration in Days', related='invoice_id.duration',
+    
+    checkin_date = fields.Datetime('Check In', readonly=True)
+    checkout_date = fields.Datetime('Check Out', readonly=True)    
+    duration = fields.Float('Duration in Days',
                             help="Number of days which will automatically "
                             "count from the check-in and check-out date. ")
     partner_discount = fields.Float('Disc Cust. (%)', related='invoice_id.partner_discount', digits= dp.get_precision('Discount'))
