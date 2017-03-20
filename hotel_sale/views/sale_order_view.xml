@@ -32,7 +32,7 @@
                 <field name="checkin_date"/>
                 <field name="checkout_date"/>
                 <field name="duration" invisible="0"/>
-                <field name="partner_discount" invisible="1"/>
+                <field name="partner_discount" invisible="0"/>
                 <field name="type"/>
             </xpath>
         </field>
