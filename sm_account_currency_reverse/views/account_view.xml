@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+    <data>
+        <record id="sm_res_currency_reverse_rate" model="ir.ui.view">
+            <field name="name">sm.res.currency.reverse.rate</field>
+            <field name="model">res.currency</field>
+            <field name="inherit_id" ref="base.view_currency_form"/>
+            <field name="arch" type="xml">
+                <field name="base" position="after">
+                    <field name="sm_reverse_rate" attrs="{'invisible':[('base','=',False)]}"/>
+                </field>
+            </field>
+        </record>
+    </data>
+</openerp>

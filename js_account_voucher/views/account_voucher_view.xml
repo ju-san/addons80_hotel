@@ -1,0 +1,28 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+    <data>
+        <record id="view_vendor_receipt_form_ju_san" model="ir.ui.view">
+            <field name="name">account.voucher.receipt.form</field>
+            <field name="model">account.voucher</field>
+            <field name="inherit_id" ref="account_voucher.view_vendor_receipt_form"/>
+            <field name="arch" type="xml">
+                <field name="currency_help_label" position="replace"/>
+                <field name="amount" position="replace"/>
+                <field name="currency_id" position="after">
+                	<field name="is_currency" invisible="1"/>
+                	<label for="amount" colspan="1"/>
+				    <div>                        
+	                	<field name="amount" class="oe_inline"
+	                        string="Paid Amount"
+	                        widget="monetary" options="{'currency_field': 'currency_id'}"
+	                        on_change="onchange_amount(amount, payment_rate, partner_id, journal_id, currency_id, type, date, payment_rate_currency_id, company_id, context)"/>
+                    	<field name="amount_info" widget="monetary" readonly="1"
+                	 	 	attrs="{'invisible':[('is_currency','=',False)]}"
+                    		options="{'currency_field': 'payment_rate_currency_id'}"/>
+                    </div>                    
+                    <field name="currency_help_label" colspan="2" nolabel="1" attrs="{'invisible':[('is_currency','=',False)]}" class="oe_grey"/>
+                </field>
+            </field>
+        </record>
+    </data>
+</openerp>
