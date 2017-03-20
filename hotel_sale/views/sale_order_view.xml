@@ -32,7 +32,8 @@
                 <field name="checkin_date"/>
                 <field name="checkout_date"/>
                 <field name="duration" invisible="0"/>
-                <field name="partner_discount" invisible="0"/>
+                <field name="is_discount"/>
+                <field name="partner_discount" attrs="{'invisible': [('is_discount','=',True)]}"/>
                 <field name="type"/>
             </xpath>
         </field>
@@ -56,7 +57,8 @@
                 <field name="checkin_date"/>
                 <field name="checkout_date"/>
                 <field name="duration" invisible="0"/>
-                <field name="partner_discount" invisible="1"/>
+                <field name="is_discount"/>
+                <field name="partner_discount" attrs="{'invisible': [('is_discount','=',True)]}"/>
                 <field name="type"/>
             </xpath>
         </field>

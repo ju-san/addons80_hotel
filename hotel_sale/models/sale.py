@@ -139,7 +139,9 @@ class SaleOrderLine(models.Model):
         price = line.price_unit
         if line.type == 'child':
             price = price * (1 - (line.discount or 0.0) / 100.0)
-        return price * (1 - (line.partner_discount or 0.0) / 100.0)
+        if not line.is_discount:
+            price = price * (1 - (line.partner_discount or 0.0) / 100.0)
+        return price
     
     def _calc_line_quantity(self, cr, uid, line, context=None):
         return line.product_uom_qty
@@ -226,7 +228,8 @@ class SaleOrderLine(models.Model):
         self.duration = myduration
                         
     checkin_date = fields.Datetime('Check In', default=_get_checkin_date)
-    checkout_date = fields.Datetime('Check Out', default=_get_checkout_date)    
+    checkout_date = fields.Datetime('Check Out', default=_get_checkout_date)
+    is_discount = fields.Boolean('No Disc') 
     duration = fields.Float('Duration in Days',
                             help="Number of days which will automatically "
                             "count from the check-in and check-out date. ")
@@ -239,6 +242,7 @@ class SaleOrderLine(models.Model):
         if line.type:
             invoice_vals['type'] = line.type
             invoice_vals['duration'] = line.duration or 1.0
+            invoice_vals['is_discount'] = line.is_discount or False
             invoice_vals['checkin_date'] = line.checkin_date or False
             invoice_vals['checkout_date'] = line.checkout_date or False
         return invoice_vals
@@ -276,7 +280,8 @@ class AccountInvoiceLine(models.Model):
         price = self.price_unit
         if self.type == 'child':
             price = price * (1 - (self.discount or 0.0) / 100.0)
-        price = price * (1 - (self.partner_discount or 0.0) / 100.0)
+        if not self.is_discount:
+            price = price * (1 - (self.partner_discount or 0.0) / 100.0)
         taxes = self.invoice_line_tax_id.compute_all(price, self.quantity, product=self.product_id, partner=self.invoice_id.partner_id)
         #taxes = self.invoice_line_tax_id.compute_all(price, self.quantity*self.duration, product=self.product_id, partner=self.invoice_id.partner_id)
         self.price_subtotal = taxes['total']
@@ -285,6 +290,7 @@ class AccountInvoiceLine(models.Model):
     
     checkin_date = fields.Datetime('Check In', readonly=True)
     checkout_date = fields.Datetime('Check Out', readonly=True)    
+    is_discount = fields.Boolean('No Disc') 
     duration = fields.Float('Duration in Days',
                             help="Number of days which will automatically "
                             "count from the check-in and check-out date. ")
