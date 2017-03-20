@@ -108,7 +108,7 @@ class SaleOrder(models.Model):
         val = super(SaleOrder, self).onchange_partner_id(cr, uid, ids, part, context=context)
         part = self.pool.get('res.partner').browse(cr, uid, part, context=context)
         val['value'].update({'partner_discount': part.partner_discount, 'partner_type': part.partner_type})
-        print "===onchange_partner_id===",val
+        #print "===onchange_partner_id===",val
         return val
                 
 #     @api.multi
@@ -139,7 +139,7 @@ class SaleOrderLine(models.Model):
         price = line.price_unit
         if line.type == 'child':
             price = price * (1 - (line.discount or 0.0) / 100.0)
-        return price * (1 - (line.partner_discount or 0.0) / 100.0)
+        return price * (1 - (line.order_id.partner_discount or 0.0) / 100.0)
     
     def _calc_line_quantity(self, cr, uid, line, context=None):
         return line.product_uom_qty
@@ -230,7 +230,7 @@ class SaleOrderLine(models.Model):
     duration = fields.Float('Duration in Days',
                             help="Number of days which will automatically "
                             "count from the check-in and check-out date. ")
-    partner_discount = fields.Float('Disc Cust. (%)', related='order_id.partner_discount', digits= dp.get_precision('Discount'))
+    partner_discount = fields.Float('Disc Cust. (%)', digits= dp.get_precision('Discount'))
     type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')   
     
     def _prepare_order_line_invoice_line(self, cr, uid, line, account_id=False, context=None):
@@ -276,7 +276,7 @@ class AccountInvoiceLine(models.Model):
         price = self.price_unit
         if self.type == 'child':
             price = price * (1 - (self.discount or 0.0) / 100.0)
-        price = price * (1 - (self.partner_discount or 0.0) / 100.0)
+        price = price * (1 - (self.invoice_id.partner_discount or 0.0) / 100.0)
         taxes = self.invoice_line_tax_id.compute_all(price, self.quantity, product=self.product_id, partner=self.invoice_id.partner_id)
         #taxes = self.invoice_line_tax_id.compute_all(price, self.quantity*self.duration, product=self.product_id, partner=self.invoice_id.partner_id)
         self.price_subtotal = taxes['total']
@@ -288,7 +288,7 @@ class AccountInvoiceLine(models.Model):
     duration = fields.Float('Duration in Days',
                             help="Number of days which will automatically "
                             "count from the check-in and check-out date. ")
-    partner_discount = fields.Float('Disc Cust. (%)', related='invoice_id.partner_discount', digits= dp.get_precision('Discount'))
+    partner_discount = fields.Float('Disc Cust. (%)', digits= dp.get_precision('Discount'))
     type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='child')
 
 class AccountInvoiceTax(models.Model):
