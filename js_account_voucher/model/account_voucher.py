@@ -45,7 +45,7 @@ class AccountVoucher(osv.osv):
     def _fnct_currency_help_label(self, cr, uid, ids, name, args, context=None):
         res = {}
         for voucher in self.browse(cr, uid, ids, context=context):
-            res[voucher.id] = self._get_currency_help_label(cr, uid, voucher.currency_id.id, voucher.payment_rate, voucher.payment_rate_currency_id.id, context=context)
+            res[voucher.id] = self._get_currency_help_label(cr, uid, voucher.currency_id.id, voucher.payment_rate, voucher.company_currency_id.id, context=context)
         return res
     
     def _get_amount_help_label(self, cr, uid, currency_id, payment_rate, payment_rate_currency_id, context=None):
@@ -58,25 +58,27 @@ class AccountVoucher(osv.osv):
 #         if payment_rate_currency_id:
 #             payment_rate_str  = rml_parser.formatLang(currency_pool.browse(cr, uid, currency_id, context=context).rate, currency_obj=currency_pool.browse(cr, uid, payment_rate_currency_id, context=context))
 #         currency_help_label = _('At the operation date, the exchange rate was\n%s = %s') % (currency_str, payment_rate_str)
-            return str(currency_pool.browse(cr, uid, currency_id, context=context).rate)
+            return str(payment_rate*currency_pool.browse(cr, uid, currency_id, context=context).rate)
     
     def _fnct_amount_info_label(self, cr, uid, ids, name, args, context=None):
         res = {}        
         for voucher in self.browse(cr, uid, ids, context=context):
-            res[voucher.id] = self._get_amount_help_label(cr, uid, voucher.currency_id.id, voucher.payment_rate, voucher.payment_rate_currency_id.id, context=context)
+            res[voucher.id] = self._get_amount_help_label(cr, uid, voucher.currency_id.id, voucher.amount, voucher.company_currency_id.id, context=context)
         return res
     
     _columns = {
         'is_currency': fields.boolean('Is multi currency'),
         'amount_info': fields.function(_fnct_amount_info_label, type='float', string='Amount Rate'),
         'currency_inverse_help_label': fields.text('Rate'),
+        'company_currency_id': fields.related('company_id','currency_id', type='many2one', relation='res.currency', string='Company Currency'),
         'currency_help_label': fields.function(_fnct_currency_help_label, type='text', string="Helping Sentence", help="This sentence helps you to know how to specify the payment rate by giving you the direct effect it has"), 
     }
 #     is_currency = fields.Boolean('Is multi currency')
 #     amount_info = fields.Float(string='Amount Rate', compute='_compute_rate_amount') 
 #     currency_inverse_help_label = fields.Text(string='Helping Rate Sentence', compute='_compute_rate_amount')
     def onchange_rate(self, cr, uid, ids, rate, amount, currency_id, payment_rate_currency_id, company_id, context=None):
-        res =  {'value': {'paid_amount_in_company_currency': amount, 'amount_info':  self._get_amount_help_label(cr, uid, currency_id, rate, payment_rate_currency_id, context=context), 'currency_help_label': self._get_currency_help_label(cr, uid, currency_id, rate, payment_rate_currency_id, context=context)}}
+        company_currency = self.pool.get('res.company').browse(cr, uid, company_id, context=context).currency_id
+        res =  {'value': {'paid_amount_in_company_currency': amount, 'amount_info':  self._get_amount_help_label(cr, uid, currency_id, amount*rate, company_currency.id, context=context), 'currency_help_label': self._get_currency_help_label(cr, uid, currency_id, rate, payment_rate_currency_id, context=context)}}
         if rate and amount and currency_id:
             company_currency = self.pool.get('res.company').browse(cr, uid, company_id, context=context).currency_id
             #context should contain the date, the payment currency and the payment rate specified on the voucher

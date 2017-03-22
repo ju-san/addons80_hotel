@@ -10,6 +10,7 @@
                 <field name="amount" position="replace"/>
                 <field name="currency_id" position="after">
                 	<field name="is_currency" invisible="1"/>
+                	<field name="company_currency_id" invisible="1"/>
                 	<label for="amount" colspan="1"/>
 				    <div>                        
 	                	<field name="amount" class="oe_inline"
@@ -21,7 +22,7 @@
                 	 	 	options="{'currency_field': 'payment_rate_currency_id'}"/> -->
                 	 	 	<field name="amount_info" widget="monetary" 
                 	 	 		attrs="{'invisible': [('is_currency','=',False)]}"
-                	 	 		options="{'currency_field': 'payment_rate_currency_id'}"/>
+                	 	 		options="{'currency_field': 'company_currency_id'}"/>
                     </div>                    
                 </field>
                 <field name="journal_id" position="after">                  

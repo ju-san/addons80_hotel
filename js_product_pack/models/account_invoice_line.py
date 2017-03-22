@@ -42,15 +42,15 @@ class account_invoice_line(models.Model):
     )
 
     @api.one
-    @api.constrains('product_id', 'price_unit', 'product_uom_qty')
+    @api.constrains('product_id', 'price_unit', 'product_qty')
     def expand_pack_invoice_line(self):
         detailed_packs = ['components_price', 'totalice_price', 'fixed_price']
         if (self.invoice_id.state == 'draft' and
                 self.product_id.pack and
                 self.pack_type in detailed_packs):
             for subline in self.product_id.pack_line_ids:
-                vals = subline.get_sale_order_line_vals(
-                    self, self.order_id)
+                vals = subline.get_account_invoice_line_vals(
+                    self, self.invoice_id)
                 vals['sequence'] = self.sequence
                 existing_subline = self.search([
                     ('product_id', '=', subline.product_id.id),
