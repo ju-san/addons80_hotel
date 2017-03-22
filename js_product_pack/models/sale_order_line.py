@@ -44,7 +44,6 @@ class sale_order_line(models.Model):
     @api.one
     @api.constrains('product_id', 'price_unit', 'product_uom_qty')
     def expand_pack_line(self):
-        print "===expand_pack_line===="
         detailed_packs = ['components_price', 'totalice_price', 'fixed_price']
         if (self.state == 'draft' and
                 self.product_id.pack and

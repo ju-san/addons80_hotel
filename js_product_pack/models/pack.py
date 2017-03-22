@@ -139,7 +139,7 @@ class product_pack(models.Model):
         subproduct_name = subproduct.name
 
         vals = {
-            'order_id': order.id,
+            'invoice_id': order.id,
             'name': '%s%s' % (
                 '> ' * (line.pack_depth + 1), subproduct_name
             ),
@@ -151,14 +151,14 @@ class product_pack(models.Model):
             'price_unit': price,
             'tax_id': tax_id,
             'address_allotment_id': False,
-            'product_qty': quantity,
-            'product_uom': subproduct.uom_id.id,
-            'product_uos_qty': uos_qty,
-            'product_uos': uos_id,
-            'product_packaging': False,
+            'quantity': quantity,
+            'uos_id': subproduct.uom_id.id,
+            #'product_uos_qty': uos_qty,
+            #'product_uos': uos_id,
+            #'product_packaging': False,
             'discount': discount,
-            'number_packages': False,
-            'th_weight': False,
+            #'number_packages': False,
+            #'th_weight': False,
             'state': 'draft',
             'pack_parent_line_id': line.id,
             'pack_depth': line.pack_depth + 1,

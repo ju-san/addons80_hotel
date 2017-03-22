@@ -42,7 +42,7 @@ class account_invoice_line(models.Model):
     )
 
     @api.one
-    @api.constrains('product_id', 'price_unit', 'product_qty')
+    @api.constrains('product_id', 'price_unit', 'quantity')
     def expand_pack_invoice_line(self):
         detailed_packs = ['components_price', 'totalice_price', 'fixed_price']
         if (self.invoice_id.state == 'draft' and
