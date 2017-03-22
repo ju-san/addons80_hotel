@@ -16,11 +16,16 @@
 	                        string="Paid Amount"
 	                        widget="monetary" options="{'currency_field': 'currency_id'}"
 	                        on_change="onchange_amount(amount, payment_rate, partner_id, journal_id, currency_id, type, date, payment_rate_currency_id, company_id, context)"/>
-                    	<field name="amount_info" widget="monetary" readonly="1"
-                	 	 	attrs="{'invisible':[('is_currency','=',False)]}"
-                    		options="{'currency_field': 'payment_rate_currency_id'}"/>
+                    	<!-- <field name="amount_info" widget="monetary" readonly="1"
+                    		attrs="{'invisible': [('is_currency','=',False)]}"
+                	 	 	options="{'currency_field': 'payment_rate_currency_id'}"/> -->
+                	 	 	<field name="amount_info" widget="monetary" 
+                	 	 		attrs="{'invisible': [('is_currency','=',False)]}"
+                	 	 		options="{'currency_field': 'payment_rate_currency_id'}"/>
                     </div>                    
-                    <field name="currency_help_label" colspan="2" nolabel="1" attrs="{'invisible':[('is_currency','=',False)]}" class="oe_grey"/>
+                </field>
+                <field name="journal_id" position="after">                  
+                    <field name="currency_help_label" attrs="{'invisible': [('is_currency','=',False)]}" colspan="2" nolabel="1" class="oe_grey"/>
                 </field>
             </field>
         </record>
