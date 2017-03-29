@@ -33,8 +33,8 @@
                 <field name="checkout_date"/>
                 <field name="duration" invisible="0"/>
                 <field name="is_discount"/>
-                <!-- <field name="partner_discount" attrs="{'invisible': [('is_discount','=',True)]}"/> -->
-                <field name="type"/>
+                <field name="partner_discount" attrs="{'invisible': [('is_discount','=',False)]}"/>
+                <!-- <field name="type"/> -->
             </xpath>
         </field>
     </record>
@@ -58,8 +58,8 @@
                 <field name="checkout_date"/>
                 <field name="duration" invisible="0"/>
                 <field name="is_discount"/>
-                <!-- <field name="partner_discount" attrs="{'invisible': [('is_discount','=',True)]}"/> -->
-                <field name="type"/>
+                <field name="partner_discount" attrs="{'invisible': [('is_discount','=',False)]}"/>
+                <!-- <field name="type"/> -->
             </xpath>
         </field>
     </record>
