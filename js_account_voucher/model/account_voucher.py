@@ -78,7 +78,10 @@ class AccountVoucher(osv.osv):
 #     currency_inverse_help_label = fields.Text(string='Helping Rate Sentence', compute='_compute_rate_amount')
     def onchange_rate(self, cr, uid, ids, rate, amount, currency_id, payment_rate_currency_id, company_id, context=None):
         company_currency = self.pool.get('res.company').browse(cr, uid, company_id, context=context).currency_id
-        res =  {'value': {'paid_amount_in_company_currency': amount, 'amount_info':  self._get_amount_help_label(cr, uid, currency_id, amount*rate, company_currency.id, context=context), 'currency_help_label': self._get_currency_help_label(cr, uid, currency_id, rate, payment_rate_currency_id, context=context)}}
+        #currency_pool = self.pool.get('res.currency')
+        #rate_view = currency_pool.browse(cr, uid, currency_id, context=context).rate
+        #print "==onchange_rate==",amount,rate,rate_view,amount*rate_view
+        res =  {'value': {'paid_amount_in_company_currency': amount, 'amount_info':  self._get_amount_help_label(cr, uid, currency_id, amount, company_currency.id, context=context), 'currency_help_label': self._get_currency_help_label(cr, uid, currency_id, rate, payment_rate_currency_id, context=context)}}
         if rate and amount and currency_id:
             company_currency = self.pool.get('res.company').browse(cr, uid, company_id, context=context).currency_id
             #context should contain the date, the payment currency and the payment rate specified on the voucher
