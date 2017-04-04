@@ -84,7 +84,7 @@ def _offset_format_timestamp1(src_tstamp_str, src_format, dst_format,
 class ResPartner(models.Model):
     _inherit = 'res.partner'
 
-    partner_discount = fields.Float(string='Returning Discount')
+    partner_discount = fields.Selection([(0, '0'), (10, '10')], string='Returning Discount')
     partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
                              'Type', default=lambda *a: 'regular')
     
@@ -99,7 +99,8 @@ class ResPartner(models.Model):
 class SaleOrder(models.Model):
     _inherit = 'sale.order'
     
-    partner_discount = fields.Float(string='Returning Discount')
+    #partner_discount = fields.Float(string='Returning Discount')
+    partner_discount = fields.Selection([(0, '0'), (10, '10')], string='Returning Discount')
     partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
                              'Type', default=lambda *a: 'regular')
     
@@ -229,11 +230,14 @@ class SaleOrderLine(models.Model):
                         
     checkin_date = fields.Datetime('Check In', default=_get_checkin_date)
     checkout_date = fields.Datetime('Check Out', default=_get_checkout_date)
+    checkin = fields.Date('Check In')
+    checkout = fields.Date('Check Out')
     is_discount = fields.Boolean('Is Disc') 
     duration = fields.Float('Duration in Days',
                             help="Number of days which will automatically "
                             "count from the check-in and check-out date. ")
-    partner_discount = fields.Float('Disc Cust. (%)', related='order_id.partner_discount', readonly=True, digits= dp.get_precision('Discount'))
+    partner_discount = fields.Selection([(0, '0'), (10, '10')], related='order_id.partner_discount', string='Disc Cust. (%)')
+    #partner_discount = fields.Float('Disc Cust. (%)', related='order_id.partner_discount', readonly=True, digits= dp.get_precision('Discount'))
     type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='adult')   
     
     def _prepare_order_line_invoice_line(self, cr, uid, line, account_id=False, context=None):
@@ -243,14 +247,15 @@ class SaleOrderLine(models.Model):
             invoice_vals['type'] = line.type
             invoice_vals['duration'] = line.duration or 1.0
             invoice_vals['is_discount'] = line.is_discount or False
-            invoice_vals['checkin_date'] = line.checkin_date or False
-            invoice_vals['checkout_date'] = line.checkout_date or False
+            invoice_vals['checkin'] = line.checkin or False
+            invoice_vals['checkout'] = line.checkout or False
         return invoice_vals
     
 class AccountInvoice(models.Model):
     _inherit = 'account.invoice'
     
-    partner_discount = fields.Float('Discount Customer (%)', digits= dp.get_precision('Discount'))
+    #partner_discount = fields.Float('Discount Customer (%)', digits= dp.get_precision('Discount'))
+    partner_discount = fields.Selection([(0, '0'), (10, '10')], string='Discount Customer (%)')
     partner_type = fields.Selection([('regular', 'Regular'), ('vip', 'VIP'), ('travel', 'Travel Agent')],
                              'Customer Type', default=lambda *a: 'regular', readonly=True, states={'draft': [('readonly', False)]})
     
@@ -289,12 +294,15 @@ class AccountInvoiceLine(models.Model):
             self.price_subtotal = self.invoice_id.currency_id.round(self.price_subtotal)
     
     checkin_date = fields.Datetime('Check In', readonly=True)
-    checkout_date = fields.Datetime('Check Out', readonly=True)    
+    checkout_date = fields.Datetime('Check Out', readonly=True) 
+    checkin = fields.Date('Check In')
+    checkout = fields.Date('Check Out')   
     is_discount = fields.Boolean('Is Disc') 
     duration = fields.Float('Duration in Days',
                             help="Number of days which will automatically "
                             "count from the check-in and check-out date. ")
-    partner_discount = fields.Float('Disc Cust. (%)', related='invoice_id.partner_discount', readonly=True, digits= dp.get_precision('Discount'))
+    #partner_discount = fields.Float('Disc Cust. (%)', related='invoice_id.partner_discount', readonly=True, digits= dp.get_precision('Discount'))
+    partner_discount = fields.Selection([(0, '0'), (10, '10')], related='invoice_id.partner_discount', string='Disc Cust. (%)')
     type = fields.Selection([('adult','Adult'),('child','Child')], string='Adult/Child', default='child')
 
 class AccountInvoiceTax(models.Model):

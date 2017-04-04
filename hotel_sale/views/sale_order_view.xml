@@ -29,9 +29,9 @@
                 <field name="duration"/>
             </xpath> -->
             <xpath expr="//field[@name='order_line']/tree/field[@name='product_uom_qty']" position="after">
-                <field name="checkin_date"/>
-                <field name="checkout_date"/>
-                <field name="duration" invisible="0"/>
+                <field name="checkin"/>
+                <field name="checkout"/>
+                <field name="duration" invisible="1"/>
                 <field name="is_discount"/>
                 <field name="partner_discount" attrs="{'invisible': [('is_discount','=',False)]}"/>
                 <!-- <field name="type"/> -->
@@ -54,9 +54,9 @@
                 <field name="duration"/>
             </xpath> -->
             <xpath expr="//field[@name='invoice_line']/tree/field[@name='quantity']" position="after">
-                <field name="checkin_date"/>
-                <field name="checkout_date"/>
-                <field name="duration" invisible="0"/>
+                <field name="checkin"/>
+                <field name="checkout"/>
+                <field name="duration" invisible="1"/>
                 <field name="is_discount"/>
                 <field name="partner_discount" attrs="{'invisible': [('is_discount','=',False)]}"/>
                 <!-- <field name="type"/> -->
