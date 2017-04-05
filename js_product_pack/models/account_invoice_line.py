@@ -141,7 +141,7 @@ class account_invoice_line(models.Model):
 
         res = []
         for line in inv.invoice_line:
-            if line.product_id.pack_price_type == 'none_detailed_assited_price':
+            if line.product_id.pack and line.product_id.pack_price_type == 'none_detailed_assited_price':
                 for pack_line in line.pack_line_ids:
                     mres = self.move_line_pack_get_item(pack_line)
                     mres['invl_id'] = line.id
